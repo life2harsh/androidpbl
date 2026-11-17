@@ -1,0 +1,6 @@
+name: RC Car
+icon: 🚗
+description: Phone web gamepad driving two L298N motor drivers
+ports:
+  - 8080
+bricks: []
