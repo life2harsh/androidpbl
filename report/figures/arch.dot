@@ -1,0 +1,28 @@
+digraph A {
+graph [rankdir=TB, fontname="Times-Roman", dpi=200, nodesep=0.4, ranksep=0.5, compound=true];
+node [shape=box, style="rounded,filled", fillcolor="#FFFFFF", fontname="Times-Roman", fontsize=11];
+edge [fontname="Times-Roman", fontsize=9, color="#333333"];
+subgraph cluster_phone { label="Controller phone (Android app)"; fontname="Times-Roman"; style=dashed;
+  sens [label="SensorManager\ngravity / accelerometer · proximity", fillcolor="#DCE6F2"];
+  ui [label="MainActivity\njoystick · compass · speed · REC · address dialog"];
+  drv [label="Drive thread\n/d every 100 ms"];
+  sns [label="Sense thread\n/ping every 250 ms"];
+  vid [label="Video thread\nMediaCodec H.264 → SurfaceView"];
+  vibe [label="Vibrator\n< 20 cm warning"];
+  sens -> ui; ui -> drv; sns -> ui; sns -> vibe;
+}
+net [label="Wi-Fi / Tailscale (WireGuard)", shape=ellipse, fillcolor="#F2F2F2"];
+subgraph cluster_q { label="Arduino UNO Q"; fontname="Times-Roman"; style=dashed;
+  srv [label="Linux: bridge server :8080\n20 Hz loop · 400 ms stale stop"];
+  cam [label="Linux: camera service :8081\nscrcpy H.264 · JPEG recording"];
+  mcu [label="STM32 MCU sketch\nsoftware PWM · 300 ms timeout\nheading filter · auto pilot", fillcolor="#DCE6F2"];
+  srv -> mcu [label="RPC bridge", dir=both];
+}
+mot [label="2x L298N\n4 DC motors"];
+us [label="2x HC-SR04\nforward · upward"];
+imu [label="MPU6050\nI2C 400 kHz"];
+a2 [label="Redmi A2\nupward camera"];
+drv -> net; sns -> net [dir=both]; vid -> net [dir=back];
+net -> srv [dir=both, label="HTTP"]; net -> cam [dir=back, label="H.264"];
+mcu -> mot; us -> mcu [label="echo interrupts"]; imu -> mcu; a2 -> cam [label="USB / adb"];
+}
