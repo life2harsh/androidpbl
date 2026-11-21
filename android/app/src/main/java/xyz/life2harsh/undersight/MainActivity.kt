@@ -3,16 +3,27 @@ package xyz.life2harsh.undersight
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
+import android.Manifest
+import android.content.ContentValues
 import android.content.Context
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.location.Location
+import android.location.LocationManager
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.MediaStore
+import android.view.PixelCopy
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.Gravity
@@ -26,6 +37,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -48,18 +60,28 @@ class MainActivity : Activity(), SensorEventListener {
     @Volatile private var brake = false
     @Volatile private var spd = 220
     @Volatile private var alive = false
+    @Volatile private var estop = false
+    @Volatile private var lux = -1f
+    @Volatile private var loc: Location? = null
+    private var extras = false
     private val grav = FloatArray(3)
     private var g0: FloatArray? = null
     private var front = -1
     private var buzzed = 0L
     private var video: Video? = null
-    private var recName: String? = null
+    @Volatile private var recName: String? = null
+    private val log by lazy {
+        File(getExternalFilesDir(null), "telemetry-${stamp()}.csv").bufferedWriter().apply { write("t_ms,up_mm,front_mm,hdg,lux,lat,lon,estop,rec\n") }
+    }
+    private lateinit var surface: SurfaceView
 
     private lateinit var dot: View
     private lateinit var status: TextView
     private lateinit var upT: TextView
     private lateinit var frontT: TextView
     private lateinit var compass: Compass
+    private lateinit var infoT: TextView
+    private lateinit var graph: Graph
     private lateinit var recB: Button
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).roundToInt()
@@ -81,12 +103,15 @@ class MainActivity : Activity(), SensorEventListener {
         })
         thread(isDaemon = true, name = "drive") { driveLoop() }
         thread(isDaemon = true, name = "sense") { senseLoop() }
+        val need = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.RECORD_AUDIO)
+        if (need.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }) startExtras() else requestPermissions(need, 1)
     }
 
     private fun videoPane() = FrameLayout(this).apply {
         background = bg("#000000")
         clipToOutline = true
-        addView(SurfaceView(context).apply {
+        surface = SurfaceView(context)
+        addView(surface.apply {
             holder.addCallback(object : SurfaceHolder.Callback {
                 override fun surfaceCreated(h: SurfaceHolder) {
                     video = Video(h.surface, { "http://${rover.host}:8081/v" }) { ok -> ui.post { if (!ok) status.text = "camera reconnecting" } }.also { it.start() }
@@ -117,10 +142,13 @@ class MainActivity : Activity(), SensorEventListener {
                 addView(label("UNDERSIGHT", 11f).apply { setTextColor(Color.parseColor("#8B9099")); letterSpacing = .15f })
                 upT = label("↑ -- cm", 20f); addView(upT)
                 frontT = label("→ -- cm", 20f); addView(frontT)
+                infoT = label("☀ -- lx   ⌖ no fix", 12f).apply { setTextColor(Color.parseColor("#8B9099")) }; addView(infoT)
             }, lp(0, -2, 1f))
             compass = Compass(context).apply { setOnClickListener { thread { rover.get("/cal") } } }
             addView(compass, lp(dp(84), dp(84)))
         })
+        graph = Graph(context)
+        addView(graph, lp(-1, dp(36)).apply { topMargin = dp(4) })
         addView(Joystick(context) { x, y, down -> jx = x; jy = y; stick = down }, lp(-1, 0, 1f).apply { setMargins(0, dp(8), 0, dp(8)) })
         addView(LinearLayout(context).apply {
             addView(button("Hold to tilt").apply {
@@ -134,6 +162,7 @@ class MainActivity : Activity(), SensorEventListener {
             }, lp(0, -2, 1.4f))
             recB = button("● REC").apply { setOnClickListener { toggleRec() } }
             addView(recB, lp(0, -2, 1f).apply { leftMargin = dp(8) })
+            addView(button("SNAP").apply { setOnClickListener { snap() } }, lp(0, -2, .8f).apply { leftMargin = dp(8) })
         })
         addView(LinearLayout(context).apply {
             gravity = Gravity.CENTER_VERTICAL
@@ -163,7 +192,7 @@ class MainActivity : Activity(), SensorEventListener {
     private fun toggleRec() = thread {
         val name = recName
         val r = if (name == null) {
-            val n = SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.US).format(Date())
+            val n = stamp()
             rover.get("/rec/start/$n", 8081)?.also { recName = n }
         } else rover.get("/rec/stop", 8081)?.also { recName = null }
         ui.post {
@@ -176,10 +205,67 @@ class MainActivity : Activity(), SensorEventListener {
         }
     }
 
+    private fun stamp() = SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.US).format(Date())
+
+    private fun snap() {
+        val b = Bitmap.createBitmap(surface.width, surface.height, Bitmap.Config.ARGB_8888)
+        PixelCopy.request(surface, b, { r ->
+            if (r != PixelCopy.SUCCESS) { status.text = "no frame to save"; return@request }
+            val cv = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, "undersight-${stamp()}.jpg")
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Undersight")
+            }
+            thread {
+                contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv)?.let { u ->
+                    contentResolver.openOutputStream(u)?.use { b.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+                }
+                ui.post { status.text = "saved to Pictures/Undersight" }
+            }
+        }, ui)
+    }
+
+    override fun onRequestPermissionsResult(c: Int, p: Array<out String>, g: IntArray) = startExtras()
+
+    @SuppressLint("MissingPermission")
+    private fun startExtras() {
+        if (extras) return
+        extras = true
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED)
+            getSystemService(LocationManager::class.java).run {
+                for (pr in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).filter { isProviderEnabled(it) }) {
+                    getLastKnownLocation(pr)?.let { if (loc == null) loc = it }
+                    requestLocationUpdates(pr, 2000, 0f, { loc = it }, Looper.getMainLooper())
+                }
+            }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+            thread(isDaemon = true, name = "clap") { clapLoop() }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun clapLoop() {
+        val n = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        val rec = AudioRecord(MediaRecorder.AudioSource.MIC, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, n)
+        val buf = ShortArray(n / 2)
+        var last = 0L
+        rec.startRecording()
+        while (true) {
+            val k = rec.read(buf, 0, buf.size)
+            var pk = 0
+            for (j in 0 until k) pk = max(pk, abs(buf[j].toInt()))
+            val now = System.currentTimeMillis()
+            if (pk < 18000 || now - last < 150) continue
+            if (now - last < 700) {
+                estop = !estop
+                last = 0
+                vib.vibrate(VibrationEffect.createOneShot(if (estop) 300 else 60, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else last = now
+        }
+    }
+
     private fun driveLoop() {
         var was = false
         while (true) {
-            val on = (stick || tilting) && !brake
+            val on = (stick || tilting) && !brake && !estop
             if (on || was) {
                 var l = 0; var r = 0
                 if (on) {
@@ -197,6 +283,8 @@ class MainActivity : Activity(), SensorEventListener {
         while (true) {
             val s = rover.sense()
             ui.post { show(s) }
+            val l = loc
+            log.write("${System.currentTimeMillis()},${s?.up ?: ""},${s?.front ?: ""},${s?.hdg ?: ""},${if (lux < 0) "" else lux},${l?.latitude ?: ""},${l?.longitude ?: ""},${if (estop) 1 else 0},${recName ?: ""}\n")
             Thread.sleep(250)
         }
     }
@@ -207,11 +295,16 @@ class MainActivity : Activity(), SensorEventListener {
         dot.background = bg(if (s != null) "#2EA043" else "#F85149", 6)
         if (s == null) { status.text = "rover offline · long-press to set address"; compass.deg = null; return }
         front = s.front
+        graph.add(if (s.front < 0) -1f else s.front / 10f)
+        val l = loc
+        infoT.text = (if (lux < 0) "☀ -- lx" else "☀ ${lux.roundToInt()} lx" + if (lux < 10) " dark" else "") +
+            "   ⌖ " + (l?.let { "%.5f, %.5f ±%dm".format(it.latitude, it.longitude, it.accuracy.roundToInt()) } ?: "no fix")
         upT.text = "↑ ${cm(s.up)} cm"
         frontT.text = "→ ${cm(s.front)} cm"
         frontT.setTextColor(Color.parseColor(if (s.front in 0..199) "#F85149" else "#E7E9EC"))
         compass.deg = if (s.hdg > -99999) ((s.hdg / 10f % 360 + 540) % 360 - 180) else null
         status.text = when {
+            estop -> "STOPPED · double-clap to resume"
             brake -> "BRAKE · proximity covered"
             s.mode >= 0 -> "auto: " + (listOf("drive", "turn", "check", "stuck").getOrNull(s.mode) ?: s.mode)
             tilting -> "tilt  steer %+.2f  throttle %+.2f".format(jx, jy)
@@ -229,6 +322,7 @@ class MainActivity : Activity(), SensorEventListener {
     override fun onSensorChanged(e: SensorEvent) {
         when (e.sensor.type) {
             Sensor.TYPE_PROXIMITY -> brake = e.values[0] < e.sensor.maximumRange
+            Sensor.TYPE_LIGHT -> lux = e.values[0]
             else -> {
                 if (e.sensor.type == Sensor.TYPE_ACCELEROMETER) for (i in 0..2) grav[i] += .2f * (e.values[i] - grav[i])
                 else e.values.copyInto(grav, 0, 0, 3)
@@ -248,12 +342,13 @@ class MainActivity : Activity(), SensorEventListener {
         super.onResume()
         val g = sm.getDefaultSensor(Sensor.TYPE_GRAVITY) ?: sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         g?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
-        sm.getDefaultSensor(Sensor.TYPE_PROXIMITY)?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
+        for (t in listOf(Sensor.TYPE_PROXIMITY, Sensor.TYPE_LIGHT)) sm.getDefaultSensor(t)?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
     }
 
     override fun onPause() {
         super.onPause()
         sm.unregisterListener(this)
+        log.flush()
         stick = false; tilting = false; jx = 0f; jy = 0f
     }
 }

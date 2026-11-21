@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.cos
@@ -68,5 +69,30 @@ class Compass(ctx: Context) : View(ctx) {
         val a = Math.toRadians(d.toDouble())
         c.drawLine(cx, cy, cx + (sin(a) * r * .8).toFloat(), cy - (cos(a) * r * .8).toFloat(), needle)
         c.drawText("%.0f°".format(d), cx, cy + r * .75f, text)
+    }
+}
+
+class Graph(ctx: Context) : View(ctx) {
+    private val v = FloatArray(120) { -1f }
+    private var i = 0
+    private val line = paint(Color.parseColor("#1F6FEB"), 4f)
+    private val grid = paint(Color.parseColor("#2A2F37"), 2f)
+    private val path = Path()
+
+    fun add(cm: Float) { v[i++ % v.size] = cm; invalidate() }
+
+    override fun onDraw(c: Canvas) {
+        c.drawLine(0f, height / 2f, width.toFloat(), height / 2f, grid)
+        path.reset()
+        var pen = false
+        for (k in v.indices) {
+            val y = v[(i + k) % v.size]
+            if (y < 0) { pen = false; continue }
+            val px = k * width / (v.size - 1f)
+            val py = height * (1 - min(y / 200f, 1f))
+            if (pen) path.lineTo(px, py) else path.moveTo(px, py)
+            pen = true
+        }
+        c.drawPath(path, line)
     }
 }
