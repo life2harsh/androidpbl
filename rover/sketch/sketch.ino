@@ -13,11 +13,12 @@ Motor motors[4] = {
 Echo echoes[2] = {{A3, 0, 0, 0}, {3, 0, 0, 0}};
 
 const int TRIG = 11, IMU_ADDR = 0x68;
-const int CRUISE = 180, SPIN = 150, CLEAR = 350;
+const int CRUISE = 180, SPIN = 150, CLEAR = 350, STOP_MM = 150;
+const float KP = 4, KI = 0.6, KD = 0.5;
 const unsigned long TIMEOUT_MS = 300, PERIOD_US = 10000, PING_MS = 60, IMU_US = 10000;
 int val[4] = {0, 0, 0, 0};
 unsigned long last[4] = {0, 0, 0, 0}, lastPing = 0, lastImu = 0, lastTry = 0;
-float ux, uy, uz, bx, by, bz, hdg = 0, r0 = 0, r1 = 0;
+float ux, uy, uz, bx, by, bz, hdg = 0, r0 = 0, r1 = 0, rate = 0, iacc = 0, corr = 0;
 bool imu = false;
 int bad = 0;
 int16_t pv[7];
@@ -50,6 +51,20 @@ void wr(int reg, int v) {
   Wire.endTransmission();
 }
 
+void unstick() {
+  Wire.end();
+  pinMode(SDA, INPUT_PULLUP);
+  pinMode(SCL, OUTPUT);
+  for (int i = 0; i < 9 && !digitalRead(SDA); i++) {
+    digitalWrite(SCL, LOW);
+    delayMicroseconds(5);
+    digitalWrite(SCL, HIGH);
+    delayMicroseconds(5);
+  }
+  Wire.begin();
+  Wire.setClock(100000);
+}
+
 bool rd(int16_t *v) {
   Wire.beginTransmission(IMU_ADDR);
   Wire.write(0x3B);
@@ -65,7 +80,7 @@ void calibrate() {
   Wire.beginTransmission(IMU_ADDR);
   Wire.write(0x6B);
   Wire.write(0x80);
-  if (Wire.endTransmission()) return;
+  if (Wire.endTransmission()) { unstick(); return; }
   delay(100);
   wr(0x6B, 1);
   wr(0x1A, 3);
@@ -109,9 +124,8 @@ void pilot(unsigned long now) {
   int l = 0, r = 0;
   if (!imu || st == 4) st = 4;
   else if (st == 0 && !blocked) {
-    float c = constrain(dir * (hdg - tgt) * 4, -60, 60);
-    l = CRUISE - c;
-    r = CRUISE + c;
+    l = CRUISE - corr;
+    r = CRUISE + corr;
   }
   else if (st == 0 || (st == 2 && now - stAt > 200 && blocked)) {
     if (++turns > 4) st = 4;
@@ -120,7 +134,7 @@ void pilot(unsigned long now) {
   else if (st == 1 && fabsf(d) >= 85) { if (!dir) dir = d > 0 ? 1 : -1; st = 2; stAt = now; }
   else if (st == 1 && now - stAt > 3000) st = 4;
   else if (st == 1) { l = SPIN; r = -SPIN; }
-  else if (st == 2 && now - stAt > 200) { st = 0; tgt = hdg; turns = 0; }
+  else if (st == 2 && now - stAt > 200) { st = 0; tgt = hdg; turns = 0; iacc = 0; }
   setLeft(l);
   setRight(r);
 }
@@ -151,7 +165,7 @@ void setup() {
   Bridge.provide("auto", autoRpc);
   Bridge.provide("mode", mode);
   Wire.begin();
-  Wire.setClock(400000);
+  Wire.setClock(100000);
   calibrate();
 }
 
@@ -177,21 +191,29 @@ void loop() {
       float m = fmaxf(fminf(r, r0), fminf(fmaxf(r, r0), r1));
       r1 = r0;
       r0 = r;
+      rate = m;
       if (!(val[0] | val[1] | val[2] | val[3]) && fabsf(m) < 2) {
         bx += (v[4] - bx) * 0.01f;
         by += (v[5] - by) * 0.01f;
         bz += (v[6] - bz) * 0.01f;
       } else hdg += m * (t - lastImu) / 1e6f;
+      float e = dir * (hdg - tgt);
+      iacc = constrain(iacc + e * IMU_US / 1e6f, -20, 20);
+      corr = constrain(KP * e + KI * iacc + KD * dir * rate, -60, 60);
     }
     lastImu = t;
   }
   bool on = autoAt && (long)(millis() - autoAt) < 400;
-  if (on && !was) { st = 0; turns = 0; tgt = hdg; }
+  if (on && !was) { st = 0; turns = 0; tgt = hdg; iacc = 0; }
   was = on;
   if (on) pilot(now);
-  for (int i = 0; i < 4; i++) {
-    if (now - last[i] > TIMEOUT_MS) val[i] = 0;
-    drive(motors[i], val[i], phase);
+  for (int i = 0; i < 4; i++) if (now - last[i] > TIMEOUT_MS) val[i] = 0;
+  int f = mm(echoes[1]), b = mm(echoes[0]), sum = val[0] + val[2];
+  if ((sum > 0 && f >= 0 && f < STOP_MM) || (sum < 0 && b >= 0 && b < STOP_MM)) {
+    int s = (val[0] - val[2]) / 2;
+    val[0] = val[1] = s;
+    val[2] = val[3] = -s;
   }
+  for (int i = 0; i < 4; i++) drive(motors[i], val[i], phase);
   delay(1);
 }
