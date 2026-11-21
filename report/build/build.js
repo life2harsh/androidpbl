@@ -191,7 +191,7 @@ add(Tab("Lab experiments covered by the project", ["Experiment", "Where it is us
   ["7: Environmental and other sensors", "Proximity sensor as an emergency brake; light sensor for the lighting check"],
   ["7: GPS-based location tracking", "LocationManager updates; position shown and logged with every reading"],
   ["10: Custom dialog and user interaction", "AlertDialog with EditText for the rover address; custom joystick and compass views"],
-  ["11: Camera-based application", "Upward phone camera streamed as H.264 and decoded with MediaCodec; recording; SNAP image capture"],
+  ["11: Camera-based application", "Forward phone camera streamed as H.264 and decoded with MediaCodec; recording; SNAP image capture"],
   ["12: Sensor data logging and visualization", "CSV telemetry log; live graph of the forward distance"],
   ["13: Audio-based clap counter", "Double clap detected with AudioRecord toggles the emergency stop"],
   ["13: Interfacing Android with an external Arduino", "App controls an Arduino UNO Q and reads its ultrasonic and gyro data"],
