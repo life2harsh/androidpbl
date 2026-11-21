@@ -106,9 +106,8 @@ const TEAM = [
 
 const body = [];
 const add = (...xs) => xs.flat().forEach(x => body.push(x));
-const BJ = FIG + "bench.json";
-const BEN = fs.existsSync(BJ) ? JSON.parse(fs.readFileSync(BJ)) : null;
-const v = (f, unit = "") => { try { const r = f(BEN); return r == null ? "pending" : r + unit; } catch { return "pending"; } };
+const PASS = new Set(["brake", "dialog", "env", "csv"]);
+const res = k => PASS.has(k) ? "Pass" : "Not run";
 
 add(H1("Introduction"));
 add(H2("1.1", "Background"));
@@ -203,7 +202,7 @@ add(Tab("Lab experiments covered by the project", ["Experiment", "Where it is us
 add(H1("Implementation & Testing"));
 add(H2("3.1", "Experimental Setup"));
 add(Tab("Hardware and software used", ["Item", "Details"], [
-  ["Controller phone", v(b => b.phone)],
+  ["Controller phone", "Nothing phone (model A069P), Android 17"],
   ["Rover board", "Arduino UNO Q (STM32U585 MCU, Qualcomm QRB2210 Linux side, Debian)"],
   ["Rover camera", "Xiaomi Redmi A2 on USB, scrcpy server 3.x, H.264 640x480 at 30 fps"],
   ["Sensors", "2x HC-SR04, MPU6050 (clone, WHO_AM_I 0x70)"],
@@ -211,39 +210,24 @@ add(Tab("Hardware and software used", ["Item", "Details"], [
   ["App build", "Kotlin, Android Gradle Plugin, minSdk 29, targetSdk 36"],
   ["Network", "Campus or home Wi-Fi, Tailscale for remote access"],
 ], [2600, 7038]));
-add(P("Latency was measured from a laptop on the same network as the phone, with repeated HTTP requests to the rover. Sensor noise was measured with the rover standing still in front of a wall."));
 add(H2("3.2", "Results (Test Cases / Screenshots / Output)"));
 add(H3("3.2.1 Functional test cases"));
 add(Tab("Functional tests of the app", ["Test", "Expected", "Result"], [
-  ["Joystick forward, back, left, right", "Rover moves in that direction; stops on release", v(b => b.tests.joystick)],
-  ["Hold to tilt and tilt the phone", "Rover follows the tilt; stops on release", v(b => b.tests.tilt)],
-  ["Cover the proximity sensor while driving", "Rover stops; status shows BRAKE", v(b => b.tests.brake)],
-  ["Drive towards a wall", "Distance turns red and the phone vibrates under 20 cm", v(b => b.tests.haptic)],
-  ["Turn Wi-Fi off while driving", "Rover stops within 0.4 s", v(b => b.tests.failsafe)],
-  ["Tap the compass", "Heading resets to 0°", v(b => b.tests.compass)],
-  ["Press REC, then stop", "Frames saved; count shown in the status chip", v(b => b.tests.rec)],
-  ["Long-press status, change address", "App reconnects to the new address", v(b => b.tests.dialog)],
-  ["Read the light and GPS line", "Lux and position with accuracy shown", v(b => b.tests.env)],
-  ["Press SNAP", "Frame saved in Pictures/Undersight", v(b => b.tests.snap)],
-  ["Run the app, then open the CSV", "One row per poll with all fields", v(b => b.tests.csv)],
-  ["Double clap while driving", "Rover stops; double clap again resumes", v(b => b.tests.clap)],
+  ["Joystick forward, back, left, right", "Rover moves in that direction; stops on release", res("joystick")],
+  ["Hold to tilt and tilt the phone", "Rover follows the tilt; stops on release", res("tilt")],
+  ["Cover the proximity sensor while driving", "Rover stops; status shows BRAKE", res("brake")],
+  ["Drive towards a wall", "Distance turns red and the phone vibrates under 20 cm", res("haptic")],
+  ["Turn Wi-Fi off while driving", "Rover stops within 0.4 s", res("failsafe")],
+  ["Tap the compass", "Heading resets to 0°", res("compass")],
+  ["Press REC, then stop", "Frames saved; count shown in the status chip", res("rec")],
+  ["Long-press status, change address", "App reconnects to the new address", res("dialog")],
+  ["Read the light and GPS line", "Lux and position with accuracy shown", res("env")],
+  ["Press SNAP", "Frame saved in Pictures/Undersight", res("snap")],
+  ["Run the app, then open the CSV", "One row per poll with all fields", res("csv")],
+  ["Double clap while driving", "Rover stops; double clap again resumes", res("clap")],
 ], [3300, 4300, 2038]));
-add(H3("3.2.2 Command and sensor latency"));
-add(Tab("Round-trip time of rover requests", ["Request", "Samples", "Median (ms)", "95th percentile (ms)"], [
-  ["/d (drive command)", v(b => b.drive.n), v(b => b.drive.median), v(b => b.drive.p95)],
-  ["/ping (sensor readings)", v(b => b.ping.n), v(b => b.ping.median), v(b => b.ping.p95)],
-], [3400, 1700, 2100, 2438]));
-add(P(`Video: first frame after ${v(b => b.video.first_ms, " ms")}, ${v(b => b.video.fps)} frames per second at ${v(b => b.video.kbps, " kbit/s")}.`));
-add(H3("3.2.3 Sensor accuracy and stability"));
-add(Tab("Ultrasonic and gyro readings with the rover at rest", ["Sensor", "Samples", "Mean", "Std. deviation"], [
-  ["Forward HC-SR04", v(b => b.sonar.front.n), v(b => b.sonar.front.mean, " mm"), v(b => b.sonar.front.std, " mm")],
-  ["Upward HC-SR04", v(b => b.sonar.up.n), v(b => b.sonar.up.mean, " mm"), v(b => b.sonar.up.std, " mm")],
-  ["Gyro heading drift", v(b => b.drift.secs, " s"), "–", v(b => b.drift.max_deg, "° max")],
-], [3000, 1800, 2400, 2438]));
-if (BEN && BEN.accuracy) add(Tab("Ultrasonic distance against a measuring tape", ["True distance (cm)", "Measured (cm)", "Error (cm)"],
-  BEN.accuracy.map(([t, m]) => [t, m, (m - t).toFixed(1)]), [3200, 3200, 3238]));
 add(Fig("rover.png", "The Undersight rover with the upward camera phone", 0.7));
-add(H3("3.2.4 Problems found and fixed"));
+add(H3("3.2.2 Problems found and fixed"));
 add(Tab("Problems found during development", ["Problem", "Fix"], [
   ["Firmware failed to compile: the constant MPU clashed with a CMSIS macro", "Renamed the I2C address constant to IMU_ADDR"],
   ["Bridge RPC handlers ran in another thread and corrupted I2C transfers", "Handlers only set flags; I2C and calibration run in loop()"],
