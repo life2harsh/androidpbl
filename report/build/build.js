@@ -119,12 +119,14 @@ add(P("Build an Android application that controls an under-vehicle inspection ro
 add(B("drive the rover with an on-screen joystick and, as an alternative, by tilting the phone using its gravity sensor;"));
 add(B("stop the rover immediately when the operator covers the phone's proximity sensor, and whenever the connection is lost;"));
 add(B("show the live camera feed from under the vehicle with low latency, and record it on demand;"));
-add(B("show the rover's ultrasonic distances and gyro heading, and warn the operator by vibration before a collision."));
+add(B("show the rover's ultrasonic distances and gyro heading, and warn the operator by vibration before a collision;"));
+add(B("tag every session with the ambient light level and the GPS position, log all readings to a CSV file and plot the forward distance live;"));
+add(B("save still snapshots of the video, and stop the rover hands-free with a double clap picked up by the microphone."));
 add(H2("1.3", "Social & Environmental Relevance"));
 add(P("Faster and more thorough under-vehicle checks improve security at gates without making guards bend under cars or slowing traffic. Every scan is recorded, so a suspicious finding can be reviewed and compared with earlier visits instead of depending on one person's memory. The rover reuses an old Redmi A2 phone as its camera, which gives a discarded device a second life and keeps the bill of materials low."));
 add(P("**Primary SDG:** 11. Sustainable Cities and Communities (safer public spaces). **Secondary SDGs:** 9. Industry, Innovation and Infrastructure; 12. Responsible Consumption and Production (reuse of an old phone)."));
 add(H2("1.4", "Scope"));
-add(B("**Android app:** joystick and tilt driving, a speed slider, a proximity-sensor brake, haptic collision warnings, a live H.264 video view, recording control, a compass showing the rover's heading, and a dialog to set the rover's address."));
+add(B("**Android app:** joystick and tilt driving, a speed slider, a proximity-sensor brake, haptic collision warnings, a live H.264 video view, recording control, a compass showing the rover's heading, a dialog to set the rover's address, ambient light and GPS readouts, a live distance graph, a CSV telemetry log, video snapshots and a clap-triggered emergency stop."));
 add(B("**Rover:** an Arduino UNO Q driving four motors through two L298N drivers, two HC-SR04 ultrasonic sensors (forward and upward), an MPU6050 gyroscope for heading, and a Redmi A2 phone as the upward camera."));
 add(B("**Network:** a small HTTP API on the rover, reachable on the local Wi-Fi or from anywhere through a Tailscale private network."));
 add(P("The image stitching, change detection and cloud upload of the full Undersight pipeline belong to the IoT lab project and are outside the scope of this report."));
@@ -152,7 +154,7 @@ add(P("The median of the last three rates removes single-sample spikes caused by
 add(Eq("θ ← θ + ω_median × Δt"));
 add(P("A read counts as bad if it fails, repeats the previous frame byte for byte, or gives an implausible gravity at calibration. After 20 bad reads in a row the IMU is marked absent, the heading is reported as unavailable, and the MCU retries calibration every 2 s. This was added after a cheap MPU6050 clone locked up during testing (Section 3.2.4)."));
 add(H3("2.1.4 Android app design"));
-add(P(`The app is one landscape \`Activity\` written in Kotlin, with minimum SDK 26 and target SDK 36. Its layout is built in code with \`LinearLayout\` and \`FrameLayout\`. The left pane is a \`SurfaceView\` that shows the video, with a status chip on top. The right pane holds the distances, a compass, the joystick, the tilt and record buttons, and a speed \`SeekBar\` (60-255). The joystick and the compass are custom \`View\` classes that draw on a \`Canvas\` and handle touch events. Long-pressing the status chip opens an \`AlertDialog\` with an \`EditText\` to change the rover's address, which is saved in \`SharedPreferences\`. ${Fig.ref()} shows the app.`));
+add(P(`The app is one landscape \`Activity\` written in Kotlin, with minimum SDK 29 and target SDK 36. Its layout is built in code with \`LinearLayout\` and \`FrameLayout\`. The left pane is a \`SurfaceView\` that shows the video, with a status chip on top. The right pane holds the distances, the light and GPS readout, a live graph of the forward distance, a compass, the joystick, the tilt, record and snapshot buttons, and a speed \`SeekBar\` (60-255). The joystick, the compass and the graph are custom \`View\` classes that draw on a \`Canvas\` and handle touch events. Long-pressing the status chip opens an \`AlertDialog\` with an \`EditText\` to change the rover's address, which is saved in \`SharedPreferences\`. ${Fig.ref()} shows the app.`));
 add(Fig("app.png", "Undersight controller app driving the rover", 1));
 add(P("Work is split across three threads so the UI never blocks on the network. The **drive thread** sends the current wheel speeds every 100 ms while the joystick or tilt is active, plus one final stop. The **sense thread** polls the rover every 250 ms and posts the readings to the UI thread. The **video thread** receives and decodes the camera stream."));
 add(P("The joystick or tilt gives a steering value _x_ and a throttle value _y_ in [-1, 1]. These are mixed into left and right wheel speeds for skid steering and scaled by the speed slider _s_:"));
@@ -164,10 +166,16 @@ add(P("A tilt of 3.5 m/s² (about 21°) gives full speed. Releasing the button s
 add(P("**Proximity brake.** `TYPE_PROXIMITY` reports a value below its maximum range when something covers the sensor. The app treats that as a brake and stops sending drive commands, so covering the top of the phone with a thumb stops the rover at once."));
 add(P("**Haptic warning.** When the forward ultrasonic distance is under 20 cm and the operator is still driving forward, the app vibrates for 40 ms, at most once every 300 ms. The forward distance is also shown in red."));
 add(P("All listeners are unregistered in `onPause()`, which also releases the joystick and tilt, so the rover stops if the app goes to the background."));
-add(H3("2.1.6 Live video"));
+add(H3("2.1.6 Light, location, logging and clap stop"));
+add(P("**Ambient light.** `TYPE_LIGHT` is registered with the proximity sensor in `onResume()`. The reading in lux is shown under the distances and marked _dark_ below 10 lx, where the camera image is no longer reliable for inspection."));
+add(P("**Location.** After the runtime permission is granted, the app requests updates every 2 s from the GPS and network providers of `LocationManager`, starting from the last known fix. The latitude, longitude and accuracy are shown on screen, so every inspection is tied to the place where it was done."));
+add(P("**Telemetry log and graph.** On every sensor poll (4 Hz) the sense thread appends one row to a CSV file in the app's external files directory: time, upward and forward distance, heading, light, latitude, longitude, emergency-stop state and the name of the active recording. A custom `Graph` view keeps the last 120 forward distances (30 s) in a ring buffer and draws them as a line from 0 to 200 cm."));
+add(P("**Snapshot.** The SNAP button copies the current video frame from the `SurfaceView` with `PixelCopy` and saves it as a JPEG in _Pictures/Undersight_ through `MediaStore`, so it appears in the gallery without any storage permission."));
+add(P("**Clap emergency stop.** A background thread reads the microphone with `AudioRecord` (16 kHz, mono, 16-bit) and takes the peak amplitude of each buffer. A peak above 18000 counts as a clap, with a 150 ms lockout so one clap is not counted twice. Two claps within 700 ms toggle the emergency stop, which blocks all drive commands like the proximity brake. A long vibration confirms the stop and a short one confirms the release."));
+add(H3("2.1.7 Live video"));
 add(P("The Redmi A2 is plugged into the UNO Q over USB. A camera service runs the scrcpy server [5] on the phone, which captures the rear camera at 640x480 and 30 fps and encodes H.264 at 1 Mbit/s with a key frame every second. The service serves the stream over HTTP on port 8081, and it can also save frames to disk as JPEG at 10 fps for the later inspection stages."));
 add(P("Each frame on the wire has a 12-byte header: an 8-byte presentation timestamp whose top bits flag codec configuration and key frames, and a 4-byte length. The app reads frames with a `DataInputStream` and feeds them to a hardware H.264 decoder created with `MediaCodec`. The decoder renders straight to the `SurfaceView`'s surface, with `KEY_LOW_LATENCY` set on Android 11 and later [3]. If the stream drops, the thread reconnects after 1.5 s."));
-add(H3("2.1.7 Network API and fail-safes"));
+add(H3("2.1.8 Network API and fail-safes"));
 add(P(`${Tab.ref()} lists the HTTP API served by the rover's Linux side. Every request has an 800 ms timeout in the app.`));
 add(Tab("Rover HTTP API used by the app", ["Request", "Response", "Effect"], [
   ["GET /d?l=L&r=R", "204", "Set left and right wheel speeds, -255 to 255"],
@@ -177,14 +185,17 @@ add(Tab("Rover HTTP API used by the app", ["Request", "Response", "Effect"], [
   ["GET :8081/rec/start/NAME, /rec/stop", "JSON", "Start or stop recording frames"],
 ], [3400, 2200, 4038]));
 add(P("The rover must stop if the phone, the app or the network fails. There are three independent layers: the app always sends a final zero command when the stick is released; the Linux server zeroes the wheels if no drive command arrives for 400 ms; and the MCU zeroes each motor that has not been refreshed for 300 ms. On the internet, the rover is reached through Tailscale, a WireGuard-based private network [6], at a fixed address, so the app works the same on campus Wi-Fi and on mobile data."));
-add(H3("2.1.8 Syllabus coverage"));
+add(H3("2.1.9 Syllabus coverage"));
 add(Tab("Lab experiments covered by the project", ["Experiment", "Where it is used in Undersight"], [
   ["1-3: Project setup, UI widgets, event handling", "Android Studio project; Button, EditText, TextView, SeekBar, touch listeners"],
   ["5: Sensors and SensorManager", "Sensor discovery, registration in onResume, unregistration in onPause"],
   ["6: Motion detection (accelerometer, gyroscope)", "Tilt steering from the gravity sensor; the rover's MPU6050 gyro heading"],
-  ["7: Environmental and other sensors", "Proximity sensor as an emergency brake"],
+  ["7: Environmental and other sensors", "Proximity sensor as an emergency brake; light sensor for the lighting check"],
+  ["7: GPS-based location tracking", "LocationManager updates; position shown and logged with every reading"],
   ["10: Custom dialog and user interaction", "AlertDialog with EditText for the rover address; custom joystick and compass views"],
-  ["11: Camera-based application", "Upward phone camera streamed as H.264 and decoded with MediaCodec; recording"],
+  ["11: Camera-based application", "Upward phone camera streamed as H.264 and decoded with MediaCodec; recording; SNAP image capture"],
+  ["12: Sensor data logging and visualization", "CSV telemetry log; live graph of the forward distance"],
+  ["13: Audio-based clap counter", "Double clap detected with AudioRecord toggles the emergency stop"],
   ["13: Interfacing Android with an external Arduino", "App controls an Arduino UNO Q and reads its ultrasonic and gyro data"],
   ["14: Multi-sensor mini project", "Phone sensors plus rover sensors in one real-time control app"],
 ], [4200, 5438]));
@@ -197,7 +208,7 @@ add(Tab("Hardware and software used", ["Item", "Details"], [
   ["Rover camera", "Xiaomi Redmi A2 on USB, scrcpy server 3.x, H.264 640x480 at 30 fps"],
   ["Sensors", "2x HC-SR04, MPU6050 (clone, WHO_AM_I 0x70)"],
   ["Drive", "4 DC gear motors, 2x L298N, battery pack"],
-  ["App build", "Kotlin, Android Gradle Plugin, minSdk 26, targetSdk 36"],
+  ["App build", "Kotlin, Android Gradle Plugin, minSdk 29, targetSdk 36"],
   ["Network", "Campus or home Wi-Fi, Tailscale for remote access"],
 ], [2600, 7038]));
 add(P("Latency was measured from a laptop on the same network as the phone, with repeated HTTP requests to the rover. Sensor noise was measured with the rover standing still in front of a wall."));
@@ -212,6 +223,10 @@ add(Tab("Functional tests of the app", ["Test", "Expected", "Result"], [
   ["Tap the compass", "Heading resets to 0°", v(b => b.tests.compass)],
   ["Press REC, then stop", "Frames saved; count shown in the status chip", v(b => b.tests.rec)],
   ["Long-press status, change address", "App reconnects to the new address", v(b => b.tests.dialog)],
+  ["Read the light and GPS line", "Lux and position with accuracy shown", v(b => b.tests.env)],
+  ["Press SNAP", "Frame saved in Pictures/Undersight", v(b => b.tests.snap)],
+  ["Run the app, then open the CSV", "One row per poll with all fields", v(b => b.tests.csv)],
+  ["Double clap while driving", "Rover stops; double clap again resumes", v(b => b.tests.clap)],
 ], [3300, 4300, 2038]));
 add(H3("3.2.2 Command and sensor latency"));
 add(Tab("Round-trip time of rover requests", ["Request", "Samples", "Median (ms)", "95th percentile (ms)"], [
@@ -246,6 +261,7 @@ add(B("Joystick and tilt driving with skid-steer mixing and a speed limit, using
 add(B("A proximity-sensor brake, haptic collision warnings and three independent fail-safe layers that stop the rover if anything fails."));
 add(B("Live 30 fps H.264 video decoded in hardware with MediaCodec, with recording for later inspection."));
 add(B("Ultrasonic distances and a drift-corrected gyro heading from the rover, shown in real time."));
+add(B("Light and GPS tagging, a CSV telemetry log with a live graph, video snapshots and a hands-free clap stop."));
 add(H2("4.2", "Impact on Society, Environmental Sustainability, Ethical Issues and Compliance"));
 add(P("**Society and environment.** The rover makes vehicle checks faster, safer for guards and recorded, and it reuses an old phone as its camera. The whole system runs on a low-power board and a battery pack."));
 add(P("**Ethics and compliance.** The camera points only at the underside of vehicles, and recordings stay on the rover unless the operator exports them. Inspections should be done with the vehicle owner's knowledge, under the site's security policy. Remote access goes through an encrypted private network and is not open to the public internet."));
