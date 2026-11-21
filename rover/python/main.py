@@ -36,6 +36,8 @@ def wait(cond, limit):
     while not cond():
         if patrol_st["state"] == "abort":
             raise RuntimeError("aborted")
+        if sense[2] <= -99999:
+            raise RuntimeError("gyro lost in " + patrol_st["state"])
         if time.time() - t > limit:
             raise RuntimeError("timeout in " + patrol_st["state"])
         time.sleep(0.05)
