@@ -83,13 +83,17 @@ class MainActivity : Activity(), SensorEventListener {
     private lateinit var infoT: TextView
     private lateinit var graph: Graph
     private lateinit var recB: Button
+    private lateinit var torchB: Button
+    private lateinit var autoB: Button
+    @Volatile private var auto = false
+    @Volatile private var torch = false
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).roundToInt()
     private fun bg(c: String, r: Int = 14) = GradientDrawable().apply { setColor(Color.parseColor(c)); cornerRadius = dp(r).toFloat() }
     private fun label(s: String, size: Float = 13f) = TextView(this).apply { text = s; textSize = size; setTextColor(Color.parseColor("#E7E9EC")) }
     private fun lp(w: Int, h: Int, weight: Float = 0f) = LinearLayout.LayoutParams(w, h, weight)
     private fun button(s: String) = Button(this).apply {
-        text = s; isAllCaps = false; setTextColor(Color.parseColor("#E7E9EC")); background = bg("#1B1F26"); minHeight = dp(44)
+        text = s; isAllCaps = false; setTextColor(Color.parseColor("#E7E9EC")); background = bg("#1B1F26"); minHeight = dp(44); maxLines = 1; setPadding(dp(4), 0, dp(4), 0)
     }
 
     override fun onCreate(b: Bundle?) {
@@ -151,7 +155,7 @@ class MainActivity : Activity(), SensorEventListener {
         addView(graph, lp(-1, dp(36)).apply { topMargin = dp(4) })
         addView(Joystick(context) { x, y, down -> jx = x; jy = y; stick = down }, lp(-1, 0, 1f).apply { setMargins(0, dp(8), 0, dp(8)) })
         addView(LinearLayout(context).apply {
-            addView(button("Hold to tilt").apply {
+            addView(button("TILT").apply {
                 setOnTouchListener { v, e ->
                     when (e.actionMasked) {
                         MotionEvent.ACTION_DOWN -> { g0 = grav.clone(); tilting = true; v.background = bg("#1F6FEB") }
@@ -159,10 +163,14 @@ class MainActivity : Activity(), SensorEventListener {
                     }
                     true
                 }
-            }, lp(0, -2, 1.4f))
+            }, lp(0, -2, 1f))
             recB = button("● REC").apply { setOnClickListener { toggleRec() } }
             addView(recB, lp(0, -2, 1f).apply { leftMargin = dp(8) })
-            addView(button("SNAP").apply { setOnClickListener { snap() } }, lp(0, -2, .8f).apply { leftMargin = dp(8) })
+            addView(button("SNAP").apply { setOnClickListener { snap() } }, lp(0, -2, 1f).apply { leftMargin = dp(8) })
+            torchB = button("TORCH").apply { setOnClickListener { toggleTorch() } }
+            addView(torchB, lp(0, -2, 1f).apply { leftMargin = dp(8) })
+            autoB = button("AUTO").apply { setOnClickListener { auto = !auto; thread { rover.get("/a?on=" + (if (auto) 1 else 0)) } } }
+            addView(autoB, lp(0, -2, 1f).apply { leftMargin = dp(8) })
         })
         addView(LinearLayout(context).apply {
             gravity = Gravity.CENTER_VERTICAL
@@ -187,6 +195,15 @@ class MainActivity : Activity(), SensorEventListener {
             prefs.edit().putString("host", rover.host).apply()
             video?.close()
         }.setNegativeButton("Cancel", null).show()
+    }
+
+    private fun toggleTorch() = thread {
+        val r = rover.get("/torch/" + (if (torch) 0 else 1), 8081)
+        if (r != null) torch = "true" in r
+        ui.post {
+            torchB.background = bg(if (torch) "#9A6700" else "#1B1F26")
+            status.text = if (r == null) "camera offline" else "torch " + if (torch) "on" else "off"
+        }
     }
 
     private fun toggleRec() = thread {
@@ -302,6 +319,8 @@ class MainActivity : Activity(), SensorEventListener {
         upT.text = "↑ ${cm(s.up)} cm"
         frontT.text = "→ ${cm(s.front)} cm"
         frontT.setTextColor(Color.parseColor(if (s.front in 0..199) "#F85149" else "#E7E9EC"))
+        if (auto && (estop || brake)) { auto = false; thread { rover.get("/a?on=0") } }
+        autoB.background = bg(if (s.mode >= 0) "#2EA043" else "#1B1F26")
         compass.deg = if (s.hdg > -99999) ((s.hdg / 10f % 360 + 540) % 360 - 180) else null
         status.text = when {
             estop -> "STOPPED · double-clap to resume"

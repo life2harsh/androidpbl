@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ADB = ["adb", "-s", "HMCQEY89PNEAC66X"]
 JAR = "/data/local/tmp/scrcpy-server.jar"
-ARGS = ("tunnel_forward=true audio=false control=false cleanup=false video_source=camera camera_id=0 "
+ARGS = ("tunnel_forward=true audio=false control=true clipboard_autosync=false power_on=false cleanup=false video_source=camera camera_id=0 "
         "camera_size=640x480 camera_fps=30 video_codec=h264 video_bit_rate=1000000 "
         "video_codec_options=i-frame-interval=1 send_dummy_byte=false send_device_meta=false "
         "send_frame_meta=true")
@@ -18,7 +18,7 @@ JS = open("/cam/jmuxer.min.js", "rb").read()
 IDLE = 10
 
 cv = threading.Condition()
-st = {"cfg": b"", "frame": b"", "key": False, "seq": 0, "viewers": 0}
+st = {"cfg": b"", "frame": b"", "key": False, "seq": 0, "viewers": 0, "torch": False, "ctl": None}
 rec = {}
 
 
@@ -70,12 +70,14 @@ def recvn(s, n):
 def connect():
     for _ in range(20):
         time.sleep(0.5)
+        socks = []
         try:
-            s = socket.create_connection(("127.0.0.1", 27183), timeout=5)
-            recvn(s, 4)
-            return s
+            socks = [socket.create_connection(("127.0.0.1", 27183), timeout=5) for _ in range(2)]
+            recvn(socks[0], 4)
+            return socks
         except (OSError, EOFError):
-            pass
+            for x in socks:
+                x.close()
     raise TimeoutError("scrcpy server not reachable")
 
 
@@ -90,10 +92,10 @@ def run():
         adb("wait-for-device")
         adb("push", "/scrcpy-server", JAR)
         adb("forward", "tcp:27183", "localabstract:scrcpy")
-        p = subprocess.Popen(ADB + ["shell", f"CLASSPATH={JAR} app_process / com.genymobile.scrcpy.Server 5.0.1 {ARGS}"])
+        p = subprocess.Popen(ADB + ["shell", f"CLASSPATH={JAR} app_process / com.genymobile.scrcpy.Server 5.0.1 {ARGS} camera_torch={str(st['torch']).lower()}"])
         idle = None
         try:
-            s = connect()
+            s, st["ctl"] = connect()
             print("[cam] streaming", flush=True)
             while True:
                 h = recvn(s, 12)
@@ -114,6 +116,9 @@ def run():
         except Exception as e:
             print("[cam]", repr(e), flush=True)
         finally:
+            c, st["ctl"] = st["ctl"], None
+            if c:
+                c.close()
             p.kill()
             adb("shell", "pkill", "-f", "com.genymobile")
             print("[cam] stopped", flush=True)
@@ -135,6 +140,14 @@ class H(BaseHTTPRequestHandler):
         if self.path == "/jmuxer.js":
             self.head("text/javascript")
             self.wfile.write(JS)
+        elif m := re.fullmatch(r"/torch/([01])", self.path):
+            st["torch"] = m[1] == "1"
+            try:
+                st["ctl"] and st["ctl"].sendall(bytes([18, st["torch"]]))
+            except OSError:
+                pass
+            self.head("application/json")
+            self.wfile.write(json.dumps({"torch": st["torch"]}).encode())
         elif self.path.startswith("/rec"):
             m = re.fullmatch(r"/rec/start/([\w-]{1,40})", self.path)
             with cv:
