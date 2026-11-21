@@ -101,7 +101,7 @@ const Code = lines => lines.map((l, i) => new Paragraph({ spacing: { line: 240, 
 const MEMBERS = [["2401030141", "Harsh Jha"], ["2401030133", "Jaydeep Singh"]];
 const TEAM = [
   ["Student A", "Harsh Jha (2401030141): Project lead and software. Wrote the Android controller app: the sensor pipeline for tilt steering and the proximity brake, the haptic warning, the joystick and compass views, the H.264 decoder on MediaCodec and the control loops. Wrote the rover firmware (software PWM for four motors, interrupt-driven ultrasonic ranging, the gyro heading filter with its health checks, and the autonomous pilot), the Linux bridge server and the camera streaming service. Set up the Tailscale network, ran the measurements and compiled this report."],
-  ["Student B", "Jaydeep Singh (2401030133): Hardware and testing. Assembled the four-wheel chassis and mounted the motors, the two L298N drivers, the HC-SR04 sensors, the MPU6050 and the upward-facing phone camera. Wired the power, motor and sensor connections to the Arduino UNO Q and debugged the wiring. Ran the field trials: driving runs, obstacle and clearance checks, and the distance and heading measurements used in Chapter 3."],
+  ["Student B", "Jaydeep Singh (2401030133): Hardware and testing. Assembled the four-wheel chassis and mounted the motors, the two L298N drivers, the HC-SR04 sensors, the MPU6050 and the forward-facing phone camera. Wired the power, motor and sensor connections to the Arduino UNO Q and debugged the wiring. Ran the field trials: driving runs, front and rear obstacle checks, and the distance and heading measurements used in Chapter 3."],
 ];
 
 const body = [];
@@ -126,7 +126,7 @@ add(P("A remote camera rover lets a person inspect a cramped or unsafe space wit
 add(P("**Primary SDG:** 9. Industry, Innovation and Infrastructure. **Secondary SDGs:** 3. Good Health and Well-being (fewer injuries during inspection); 12. Responsible Consumption and Production (reuse of an old phone)."));
 add(H2("1.4", "Scope"));
 add(B("**Android app:** joystick and tilt driving, a speed slider, a proximity-sensor brake, haptic collision warnings, a live H.264 video view, recording control, a compass showing the rover's heading, a dialog to set the rover's address, ambient light and GPS readouts, a live distance graph, a CSV telemetry log, video snapshots and a clap-triggered emergency stop."));
-add(B("**Rover:** an Arduino UNO Q driving four motors through two L298N drivers, two HC-SR04 ultrasonic sensors (forward and upward), an MPU6050 gyroscope for heading, and a Redmi A2 phone as the upward camera."));
+add(B("**Rover:** an Arduino UNO Q driving four motors through two L298N drivers, two HC-SR04 ultrasonic sensors (front and rear), an MPU6050 gyroscope for heading, and a Redmi A2 phone as the forward-facing camera."));
 add(B("**Network:** a small HTTP API on the rover, reachable on the local Wi-Fi or from anywhere through a Tailscale private network."));
 
 add(H1("System Design & Methodology"));
@@ -136,11 +136,11 @@ add(P(`${Fig.ref()} shows the system. The Arduino UNO Q has two processors: an S
 add(Fig("arch.png", "System architecture", 0.95));
 add(H3("2.1.2 Rover hardware and sensors"));
 add(Tab("Rover sensors and actuators", ["Component", "Interface", "Rate", "Purpose"], [
-  ["HC-SR04 (forward)", "TRIG D11, ECHO D3 (interrupt)", "every 60 ms", "Obstacle distance ahead"],
-  ["HC-SR04 (upward)", "TRIG D11, ECHO A3 (interrupt)", "every 60 ms", "Clearance above the rover"],
+  ["HC-SR04 (front)", "TRIG D11, ECHO D3 (interrupt)", "every 60 ms", "Obstacle distance ahead"],
+  ["HC-SR04 (rear)", "TRIG D11, ECHO A3 (interrupt)", "every 60 ms", "Obstacle distance behind, when reversing"],
   ["MPU6050 gyroscope", "I2C at 400 kHz", "100 Hz", "Heading (yaw) of the rover"],
   ["4 DC motors, 2 L298N", "Software PWM, 3 pins per motor", "100 Hz PWM", "Differential (skid) steering"],
-  ["Redmi A2 camera", "USB (adb) to the Linux side", "30 fps, 640x480", "Upward camera, H.264 at 1 Mbit/s"],
+  ["Redmi A2 camera", "USB (adb) to the Linux side", "30 fps, 640x480", "Forward camera, H.264 at 1 Mbit/s"],
 ], [2300, 2900, 1500, 2938]));
 add(P("Both ultrasonic sensors share one trigger pin. Their echo pins raise interrupts on both edges, so the MCU timestamps the echo pulse without blocking. Distance in millimetres follows from the speed of sound:"));
 add(Eq("d = t_echo × 343 / 2000"));
@@ -167,11 +167,11 @@ add(P("All listeners are unregistered in `onPause()`, which also releases the jo
 add(H3("2.1.6 Light, location, logging and clap stop"));
 add(P("**Ambient light.** `TYPE_LIGHT` is registered with the proximity sensor in `onResume()`. The reading in lux is shown under the distances and marked _dark_ below 10 lx, where the camera image is no longer reliable for inspection."));
 add(P("**Location.** After the runtime permission is granted, the app requests updates every 2 s from the GPS and network providers of `LocationManager`, starting from the last known fix. The latitude, longitude and accuracy are shown on screen, so every inspection is tied to the place where it was done."));
-add(P("**Telemetry log and graph.** On every sensor poll (4 Hz) the sense thread appends one row to a CSV file in the app's external files directory: time, upward and forward distance, heading, light, latitude, longitude, emergency-stop state and the name of the active recording. A custom `Graph` view keeps the last 120 forward distances (30 s) in a ring buffer and draws them as a line from 0 to 200 cm."));
+add(P("**Telemetry log and graph.** On every sensor poll (4 Hz) the sense thread appends one row to a CSV file in the app's external files directory: time, rear and front distance, heading, light, latitude, longitude, emergency-stop state and the name of the active recording. A custom `Graph` view keeps the last 120 forward distances (30 s) in a ring buffer and draws them as a line from 0 to 200 cm."));
 add(P("**Snapshot.** The SNAP button copies the current video frame from the `SurfaceView` with `PixelCopy` and saves it as a JPEG in _Pictures/Undersight_ through `MediaStore`, so it appears in the gallery without any storage permission."));
 add(P("**Clap emergency stop.** A background thread reads the microphone with `AudioRecord` (16 kHz, mono, 16-bit) and takes the peak amplitude of each buffer. A peak above 18000 counts as a clap, with a 150 ms lockout so one clap is not counted twice. Two claps within 700 ms toggle the emergency stop, which blocks all drive commands like the proximity brake. A long vibration confirms the stop and a short one confirms the release."));
 add(H3("2.1.7 Live video"));
-add(P("The Redmi A2 is plugged into the UNO Q over USB. A camera service runs the scrcpy server [5] on the phone, which captures the rear camera at 640x480 and 30 fps and encodes H.264 at 1 Mbit/s with a key frame every second. The service serves the stream over HTTP on port 8081, and it can also save frames to disk as JPEG at 10 fps for the later inspection stages."));
+add(P("The Redmi A2 is plugged into the UNO Q over USB. A camera service runs the scrcpy server [5] on the phone, which captures the main camera at 640x480 and 30 fps and encodes H.264 at 1 Mbit/s with a key frame every second. The service serves the stream over HTTP on port 8081, and it can also save frames to disk as JPEG at 10 fps for the later inspection stages."));
 add(P("Each frame on the wire has a 12-byte header: an 8-byte presentation timestamp whose top bits flag codec configuration and key frames, and a 4-byte length. The app reads frames with a `DataInputStream` and feeds them to a hardware H.264 decoder created with `MediaCodec`. The decoder renders straight to the `SurfaceView`'s surface, with `KEY_LOW_LATENCY` set on Android 11 and later [3]. If the stream drops, the thread reconnects after 1.5 s."));
 add(H3("2.1.8 Network API and fail-safes"));
 add(P(`${Tab.ref()} lists the HTTP API served by the rover's Linux side. Every request has an 800 ms timeout in the app.`));
