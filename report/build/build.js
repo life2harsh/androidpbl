@@ -111,34 +111,33 @@ const res = k => PASS.has(k) ? "Pass" : "Not run";
 
 add(H1("Introduction"));
 add(H2("1.1", "Background"));
-add(P("Vehicles entering campuses, malls, hotels and government buildings are checked for objects hidden underneath, usually by a guard holding a mirror on a stick. The check is slow, depends on lighting and attention, and leaves no record that can be reviewed later. A small camera rover that drives under the vehicle can see the whole underside, store what it saw and compare it with an earlier visit."));
-add(P("A smartphone is a natural controller for such a rover. It already has a touch screen, motion and proximity sensors, a vibration motor, a hardware video decoder and a network connection. Android exposes these through the `SensorManager`, `Vibrator` and `MediaCodec` APIs [1]-[3]. This report covers the Android part of **Undersight**: an app that drives the rover with a joystick or by tilting the phone, shows the live camera feed, and displays the rover's own sensor readings in real time."));
+add(P("Many places are hard or unsafe for a person to look into: the space under furniture and vehicles, cluttered storerooms, crawl spaces and areas after an accident. A small camera rover can go there instead, but it is only useful if the operator can drive it precisely, see what it sees and stop it at once when something goes wrong."));
+add(P("A smartphone is a natural controller for such a rover. It already has a touch screen, motion and proximity sensors, a vibration motor, a hardware video decoder and a network connection. Android exposes these through the `SensorManager`, `Vibrator` and `MediaCodec` APIs [1]-[3]. This report presents an Android app that drives the rover with a joystick or by tilting the phone, shows the live camera feed, and displays the rover's own sensor readings in real time."));
 add(H2("1.2", "Problem Statement"));
-add(P("Build an Android application that controls an under-vehicle inspection rover safely and in real time. The app must:"));
+add(P("Build an Android application that controls a remote camera rover safely and in real time. The app must:"));
 add(B("drive the rover with an on-screen joystick and, as an alternative, by tilting the phone using its gravity sensor;"));
 add(B("stop the rover immediately when the operator covers the phone's proximity sensor, and whenever the connection is lost;"));
-add(B("show the live camera feed from under the vehicle with low latency, and record it on demand;"));
+add(B("show the live camera feed with low latency, and record it on demand;"));
 add(B("show the rover's ultrasonic distances and gyro heading, and warn the operator by vibration before a collision;"));
 add(B("tag every session with the ambient light level and the GPS position, log all readings to a CSV file and plot the forward distance live;"));
 add(B("save still snapshots of the video, and stop the rover hands-free with a double clap picked up by the microphone."));
 add(H2("1.3", "Social & Environmental Relevance"));
-add(P("Faster and more thorough under-vehicle checks improve security at gates without making guards bend under cars or slowing traffic. Every scan is recorded, so a suspicious finding can be reviewed and compared with earlier visits instead of depending on one person's memory. The rover reuses an old Redmi A2 phone as its camera, which gives a discarded device a second life and keeps the bill of materials low."));
-add(P("**Primary SDG:** 11. Sustainable Cities and Communities (safer public spaces). **Secondary SDGs:** 9. Industry, Innovation and Infrastructure; 12. Responsible Consumption and Production (reuse of an old phone)."));
+add(P("A remote camera rover lets a person inspect a cramped or unsafe space without entering it, which reduces injuries. Every run is logged with its time, place and sensor readings, so findings can be reviewed later instead of depending on one person's memory. The rover reuses an old Redmi A2 phone as its camera, which gives a discarded device a second life and keeps the bill of materials low."));
+add(P("**Primary SDG:** 9. Industry, Innovation and Infrastructure. **Secondary SDGs:** 3. Good Health and Well-being (fewer injuries during inspection); 12. Responsible Consumption and Production (reuse of an old phone)."));
 add(H2("1.4", "Scope"));
 add(B("**Android app:** joystick and tilt driving, a speed slider, a proximity-sensor brake, haptic collision warnings, a live H.264 video view, recording control, a compass showing the rover's heading, a dialog to set the rover's address, ambient light and GPS readouts, a live distance graph, a CSV telemetry log, video snapshots and a clap-triggered emergency stop."));
 add(B("**Rover:** an Arduino UNO Q driving four motors through two L298N drivers, two HC-SR04 ultrasonic sensors (forward and upward), an MPU6050 gyroscope for heading, and a Redmi A2 phone as the upward camera."));
 add(B("**Network:** a small HTTP API on the rover, reachable on the local Wi-Fi or from anywhere through a Tailscale private network."));
-add(P("The image stitching, change detection and cloud upload of the full Undersight pipeline belong to the IoT lab project and are outside the scope of this report."));
 
 add(H1("System Design & Methodology"));
 add(H2("2.1", "Proposed Methodology"));
 add(H3("2.1.1 Architecture"));
 add(P(`${Fig.ref()} shows the system. The Arduino UNO Q has two processors: an STM32 microcontroller (MCU) that handles the motors and sensors in real time, and a Linux processor that runs the network services. They talk over the board's RPC bridge. The Android app talks only to the Linux side, over HTTP.`));
-add(Fig("arch.png", "System architecture of Undersight", 0.95));
+add(Fig("arch.png", "System architecture", 0.95));
 add(H3("2.1.2 Rover hardware and sensors"));
 add(Tab("Rover sensors and actuators", ["Component", "Interface", "Rate", "Purpose"], [
   ["HC-SR04 (forward)", "TRIG D11, ECHO D3 (interrupt)", "every 60 ms", "Obstacle distance ahead"],
-  ["HC-SR04 (upward)", "TRIG D11, ECHO A3 (interrupt)", "every 60 ms", "Clearance to the vehicle underside"],
+  ["HC-SR04 (upward)", "TRIG D11, ECHO A3 (interrupt)", "every 60 ms", "Clearance above the rover"],
   ["MPU6050 gyroscope", "I2C at 400 kHz", "100 Hz", "Heading (yaw) of the rover"],
   ["4 DC motors, 2 L298N", "Software PWM, 3 pins per motor", "100 Hz PWM", "Differential (skid) steering"],
   ["Redmi A2 camera", "USB (adb) to the Linux side", "30 fps, 640x480", "Upward camera, H.264 at 1 Mbit/s"],
@@ -154,7 +153,7 @@ add(Eq("θ ← θ + ω_median × Δt"));
 add(P("A read counts as bad if it fails, repeats the previous frame byte for byte, or gives an implausible gravity at calibration. After 20 bad reads in a row the IMU is marked absent, the heading is reported as unavailable, and the MCU retries calibration every 2 s. This was added after a cheap MPU6050 clone locked up during testing (Section 3.2.4)."));
 add(H3("2.1.4 Android app design"));
 add(P(`The app is one landscape \`Activity\` written in Kotlin, with minimum SDK 29 and target SDK 36. Its layout is built in code with \`LinearLayout\` and \`FrameLayout\`. The left pane is a \`SurfaceView\` that shows the video, with a status chip on top. The right pane holds the distances, the light and GPS readout, a live graph of the forward distance, a compass, the joystick, the tilt, record and snapshot buttons, and a speed \`SeekBar\` (60-255). The joystick, the compass and the graph are custom \`View\` classes that draw on a \`Canvas\` and handle touch events. Long-pressing the status chip opens an \`AlertDialog\` with an \`EditText\` to change the rover's address, which is saved in \`SharedPreferences\`. ${Fig.ref()} shows the app.`));
-add(Fig("app.png", "Undersight controller app driving the rover", 1));
+add(Fig("app.png", "Controller app driving the rover", 1));
 add(P("Work is split across three threads so the UI never blocks on the network. The **drive thread** sends the current wheel speeds every 100 ms while the joystick or tilt is active, plus one final stop. The **sense thread** polls the rover every 250 ms and posts the readings to the UI thread. The **video thread** receives and decodes the camera stream."));
 add(P("The joystick or tilt gives a steering value _x_ and a throttle value _y_ in [-1, 1]. These are mixed into left and right wheel speeds for skid steering and scaled by the speed slider _s_:"));
 add(Eq("L = s(y + x) / m,   R = s(y − x) / m,   m = max(1, |y + x|, |y − x|)"));
@@ -185,7 +184,7 @@ add(Tab("Rover HTTP API used by the app", ["Request", "Response", "Effect"], [
 ], [3400, 2200, 4038]));
 add(P("The rover must stop if the phone, the app or the network fails. There are three independent layers: the app always sends a final zero command when the stick is released; the Linux server zeroes the wheels if no drive command arrives for 400 ms; and the MCU zeroes each motor that has not been refreshed for 300 ms. On the internet, the rover is reached through Tailscale, a WireGuard-based private network [6], at a fixed address, so the app works the same on campus Wi-Fi and on mobile data."));
 add(H3("2.1.9 Syllabus coverage"));
-add(Tab("Lab experiments covered by the project", ["Experiment", "Where it is used in Undersight"], [
+add(Tab("Lab experiments covered by the project", ["Experiment", "Where it is used in the project"], [
   ["1-3: Project setup, UI widgets, event handling", "Android Studio project; Button, EditText, TextView, SeekBar, touch listeners"],
   ["5: Sensors and SensorManager", "Sensor discovery, registration in onResume, unregistration in onPause"],
   ["6: Motion detection (accelerometer, gyroscope)", "Tilt steering from the gravity sensor; the rover's MPU6050 gyro heading"],
@@ -226,7 +225,7 @@ add(Tab("Functional tests of the app", ["Test", "Expected", "Result"], [
   ["Run the app, then open the CSV", "One row per poll with all fields", res("csv")],
   ["Double clap while driving", "Rover stops; double clap again resumes", res("clap")],
 ], [3300, 4300, 2038]));
-add(Fig("rover.png", "The Undersight rover with the upward camera phone", 0.7));
+add(Fig("rover.png", "The rover with its camera phone", 0.7));
 add(H3("3.2.2 Problems found and fixed"));
 add(Tab("Problems found during development", ["Problem", "Fix"], [
   ["Firmware failed to compile: the constant MPU clashed with a CMSIS macro", "Renamed the I2C address constant to IMU_ADDR"],
@@ -240,20 +239,20 @@ add(Tab("Problems found during development", ["Problem", "Fix"], [
 
 add(H1("Conclusion & Future Scope"));
 add(H2("4.1", "Summary of Work and Achievements"));
-add(P("Undersight's Android app turns a phone into a safe, real-time controller for an under-vehicle inspection rover, combining the phone's sensors with the rover's sensors in one screen."));
+add(P("The Android app turns a phone into a safe, real-time controller for a remote camera rover, combining the phone's sensors with the rover's sensors in one screen."));
 add(B("Joystick and tilt driving with skid-steer mixing and a speed limit, using the gravity sensor and a neutral pose captured on demand."));
 add(B("A proximity-sensor brake, haptic collision warnings and three independent fail-safe layers that stop the rover if anything fails."));
 add(B("Live 30 fps H.264 video decoded in hardware with MediaCodec, with recording for later inspection."));
 add(B("Ultrasonic distances and a drift-corrected gyro heading from the rover, shown in real time."));
 add(B("Light and GPS tagging, a CSV telemetry log with a live graph, video snapshots and a hands-free clap stop."));
 add(H2("4.2", "Impact on Society, Environmental Sustainability, Ethical Issues and Compliance"));
-add(P("**Society and environment.** The rover makes vehicle checks faster, safer for guards and recorded, and it reuses an old phone as its camera. The whole system runs on a low-power board and a battery pack."));
-add(P("**Ethics and compliance.** The camera points only at the underside of vehicles, and recordings stay on the rover unless the operator exports them. Inspections should be done with the vehicle owner's knowledge, under the site's security policy. Remote access goes through an encrypted private network and is not open to the public internet."));
+add(P("**Society and environment.** The rover lets people inspect cramped or unsafe spaces without entering them, keeps a record of every run, and it reuses an old phone as its camera. The whole system runs on a low-power board and a battery pack."));
+add(P("**Ethics and compliance.** Recordings and logs stay on the rover and the phone unless the operator exports them. The rover should only be used in spaces the operator is allowed to inspect, and not to record people without their consent. Remote access goes through an encrypted private network and is not open to the public internet."));
 add(H2("4.3", "Limitations of the Work and Future Scope"));
-add(B("**No position estimate:** the rover knows its heading but not how far it has moved. Wheel encoders would allow full coverage maps of the underside."));
+add(B("**No position estimate:** the rover knows its heading but not how far it has moved. Wheel encoders would allow maps of the area covered."));
 add(B("**Cheap IMU:** the MPU6050 clone needs a power cycle when it locks up. Powering it from a GPIO pin would let the firmware reset it automatically."));
 add(B("**Plain HTTP on the local network:** commands are not authenticated when the rover is reached directly on Wi-Fi. A token or Tailscale-only access would fix this."));
-add(B("**Next stages:** image stitching, change detection against earlier scans and cloud storage are being built in the IoT lab project."));
+add(B("**Next stages:** image stitching into one map of the inspected area, and automatic detection of changes between runs."));
 
 add(H1("References", false));
 [
@@ -304,8 +303,8 @@ const cover = [
   new Paragraph({ spacing: { before: 600 }, children: [] }),
   C("Jaypee Institute of Information Technology, Noida", 32, true, 240),
   C("DEPARTMENT OF COMPUTER SCIENCE & ENGINEERING AND", 24, false), C("INFORMATION TECHNOLOGY", 24, false, 720),
-  new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 0 }, children: [new TextRun({ text: "Project Title: Undersight: A Phone-Controlled Under-Vehicle", bold: true, size: 32 })] }),
-  C("Inspection Rover", 32, true, 600),
+  new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 0 }, children: [new TextRun({ text: "Project Title: A Multi-Sensor Android Controller", bold: true, size: 32 })] }),
+  C("for a Remote Camera Rover", 32, true, 600),
   new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 720 },
     children: [new ImageRun({ type: "png", data: logo, transformation: { width: 190, height: Math.round(190 * lh / lw) } })] }),
   ...MEMBERS.map(([e, n], i) => member(i === 0, e, n)),
@@ -322,7 +321,7 @@ const H = (size, align, before, after) => ({ run: { font: FONT, size, bold: true
   paragraph: { alignment: align, spacing: { before, after, line: 360 }, keepNext: true, keepLines: true } });
 
 const doc = new Document({
-  creator: "Harsh Jha", title: "Undersight: A Phone-Controlled Under-Vehicle Inspection Rover",
+  creator: "Harsh Jha", title: "A Multi-Sensor Android Controller for a Remote Camera Rover",
   styles: {
     default: { document: { run: { font: FONT, size: 24 }, paragraph: { spacing: { line: 360 } } } },
     paragraphStyles: [
@@ -344,4 +343,4 @@ const doc = new Document({
   ],
 });
 fs.writeFileSync(__dirname + "/keys.json", JSON.stringify([...toc.map(e => e.key ?? e.text), ...figs.map(e => e.key), ...tabs.map(e => e.key)]));
-Packer.toBuffer(doc).then(b => fs.writeFileSync(R + "Undersight_Report.docx", b));
+Packer.toBuffer(doc).then(b => fs.writeFileSync(R + "Android_Lab_Report.docx", b));
