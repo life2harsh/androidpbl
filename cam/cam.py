@@ -29,6 +29,10 @@ def rec_start(name):
                           "-vf", "fps=10", "-q:v", "3", f"{d}/f_%05d.jpg"], stdin=subprocess.PIPE)
     json.dump({"start": time.time(), "fps": 10, "size": [640, 480]}, open(f"{d}/meta.json", "w"))
     rec.update(proc=p, dir=d, live=False)
+    try:
+        st["ctl"] and st["ctl"].sendall(bytes([17]))
+    except OSError:
+        pass
     st["viewers"] += 1
 
 

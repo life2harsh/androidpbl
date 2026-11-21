@@ -71,22 +71,32 @@ def patrol(legs, stop_mm):
         spin(20, -1)
         for k in range(legs):
             patrol_st.update(state="drive", cp=k)
+            Bridge.notify("stopmm", stop_mm)
             cmd = ("hold", CRUISE)
             wait(lambda: 0 <= sense[1] <= stop_mm, 30)
             cmd = ("lr", 0, 0)
             patrol_st["state"] = "capture"
-            time.sleep(0.6)
+            cam("/torch/1")
+            time.sleep(0.8)
             cam("/rec/start/%s-cp%d" % (pid, k))
             time.sleep(1.6)
-            if not cam("/rec/stop").get("frames"):
-                raise RuntimeError("no frames at cp%d" % k)
+            n = cam("/rec/stop").get("frames", 0)
+            cam("/torch/0")
+            if n < 5:
+                raise RuntimeError("%d frames at cp%d" % (n, k))
             patrol_st["state"] = "turn"
+            t = time.time()
+            while 0 <= sense[1] < stop_mm and time.time() - t < 1.5:
+                cmd = ("lr", -SPIN, -SPIN)
+                time.sleep(0.05)
+            cmd = ("lr", 0, 0)
             spin(85)
         patrol_st["state"] = "done"
     except RuntimeError as e:
         patrol_st.update(state="failed", err=str(e))
     finally:
         cmd = None
+        cam("/torch/0")
 
 PAGE = """<!doctype html><html><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">

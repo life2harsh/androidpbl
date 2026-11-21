@@ -2,7 +2,7 @@
 #include <Wire.h>
 
 struct Motor { int en, in1, in2, invert; };
-struct Echo { int pin; volatile unsigned long start, us, at; };
+struct Echo { int pin; volatile unsigned long start, us, at, h[3]; volatile int i; };
 
 Motor motors[4] = {
   {5, 7, 8, 0},
@@ -13,7 +13,7 @@ Motor motors[4] = {
 Echo echoes[2] = {{A3, 0, 0, 0}, {3, 0, 0, 0}};
 
 const int TRIG = 11, IMU_ADDR = 0x68;
-const int CRUISE = 180, SPIN = 150, CLEAR = 350, STOP_MM = 150;
+const int CRUISE = 180, SPIN = 150, CLEAR = 350, STOP_MM = 150, SLOW = 120;
 const float KP = 4, KI = 0.6, KD = 0.5;
 const unsigned long TIMEOUT_MS = 300, PERIOD_US = 10000, PING_MS = 60, IMU_US = 10000;
 int val[4] = {0, 0, 0, 0};
@@ -24,7 +24,7 @@ int bad = 0;
 int16_t pv[7];
 volatile bool wantCal = false;
 volatile unsigned long autoAt = 0, holdAt = 0;
-volatile int holdV = 0;
+volatile int holdV = 0, holdStop = 0;
 bool held = false;
 bool was = false;
 int st = 0, turns = 0, dir = 0;
@@ -35,16 +35,21 @@ void drive(Motor &m, int v, unsigned long phase) {
   if (m.invert) v = -v;
   digitalWrite(m.in1, v > 0);
   digitalWrite(m.in2, v < 0);
-  digitalWrite(m.en, phase < (unsigned long)abs(v) * PERIOD_US / 255);
+  digitalWrite(m.en, !v || phase < (unsigned long)abs(v) * PERIOD_US / 255);
 }
 
 void edge(Echo &e) {
   if (digitalRead(e.pin)) e.start = micros();
-  else { e.us = micros() - e.start; e.at = millis(); }
+  else {
+    e.h[e.i = (e.i + 1) % 3] = micros() - e.start;
+    unsigned long a = e.h[0], b = e.h[1], c = e.h[2];
+    e.us = max(min(a, b), min(max(a, b), c));
+    e.at = millis();
+  }
 }
 void onUp() { edge(echoes[0]); }
 void onFront() { edge(echoes[1]); }
-int mm(Echo &e) { return millis() - e.at > 250 ? -1 : (int)(e.us * 343 / 2000); }
+int mm(Echo &e) { return millis() - e.at > 250 || e.us > 23000 ? -1 : (int)(e.us * 343 / 2000); }
 
 void wr(int reg, int v) {
   Wire.beginTransmission(IMU_ADDR);
@@ -120,6 +125,7 @@ int heading() { return imu ? (int)(hdg * 10) : -99999; }
 void autoRpc(int v) { autoAt = v ? millis() | 1 : 0; }
 void holdRpc(int v) { holdV = v; holdAt = millis() | 1; }
 int dirRpc() { return dir; }
+void stopRpc(int v) { holdStop = v; }
 int mode() { return was ? st : -1; }
 
 void pilot(unsigned long now) {
@@ -170,6 +176,7 @@ void setup() {
   Bridge.provide("mode", mode);
   Bridge.provide("hold", holdRpc);
   Bridge.provide("dir", dirRpc);
+  Bridge.provide("stopmm", stopRpc);
   Wire.begin();
   Wire.setClock(100000);
   calibrate();
@@ -218,7 +225,11 @@ void loop() {
   bool h = !on && holdAt && (long)(millis() - holdAt) < 400;
   if (h && !held) { tgt = hdg; iacc = 0; }
   held = h;
-  if (h) { setLeft(holdV - corr); setRight(holdV + corr); }
+  if (h) {
+    int f = mm(echoes[1]), v = f < 0 ? holdV : f <= holdStop ? 0 : f < 2 * holdStop ? min((int)holdV, SLOW) : holdV;
+    setLeft(v ? v - corr : 0);
+    setRight(v ? v + corr : 0);
+  }
   for (int i = 0; i < 4; i++) if (now - last[i] > TIMEOUT_MS) val[i] = 0;
   int f = mm(echoes[1]), b = mm(echoes[0]), sum = val[0] + val[2];
   if ((sum > 0 && f >= 0 && f < STOP_MM) || (sum < 0 && b >= 0 && b < STOP_MM)) {
