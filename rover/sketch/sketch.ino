@@ -23,7 +23,9 @@ bool imu = false;
 int bad = 0;
 int16_t pv[7];
 volatile bool wantCal = false;
-volatile unsigned long autoAt = 0;
+volatile unsigned long autoAt = 0, holdAt = 0;
+volatile int holdV = 0;
+bool held = false;
 bool was = false;
 int st = 0, turns = 0, dir = 0;
 float tgt = 0, t0 = 0;
@@ -116,6 +118,8 @@ int front() { return mm(echoes[1]); }
 int recal() { wantCal = true; return 1; }
 int heading() { return imu ? (int)(hdg * 10) : -99999; }
 void autoRpc(int v) { autoAt = v ? millis() | 1 : 0; }
+void holdRpc(int v) { holdV = v; holdAt = millis() | 1; }
+int dirRpc() { return dir; }
 int mode() { return was ? st : -1; }
 
 void pilot(unsigned long now) {
@@ -131,7 +135,7 @@ void pilot(unsigned long now) {
     if (++turns > 4) st = 4;
     else { st = 1; t0 = hdg; stAt = now; }
   }
-  else if (st == 1 && fabsf(d) >= 85) { if (!dir) dir = d > 0 ? 1 : -1; st = 2; stAt = now; }
+  else if (st == 1 && fabsf(d) >= 85) { st = 2; stAt = now; }
   else if (st == 1 && now - stAt > 3000) st = 4;
   else if (st == 1) { l = SPIN; r = -SPIN; }
   else if (st == 2 && now - stAt > 200) { st = 0; tgt = hdg; turns = 0; iacc = 0; }
@@ -164,6 +168,8 @@ void setup() {
   Bridge.provide("cal", recal);
   Bridge.provide("auto", autoRpc);
   Bridge.provide("mode", mode);
+  Bridge.provide("hold", holdRpc);
+  Bridge.provide("dir", dirRpc);
   Wire.begin();
   Wire.setClock(100000);
   calibrate();
@@ -192,6 +198,8 @@ void loop() {
       r1 = r0;
       r0 = r;
       rate = m;
+      int spin = (val[0] > 0 && val[2] < 0) - (val[0] < 0 && val[2] > 0);
+      if (spin && fabsf(m) > 20) dir = (m > 0) == (spin > 0) ? 1 : -1;
       if (!(val[0] | val[1] | val[2] | val[3]) && fabsf(m) < 2) {
         bx += (v[4] - bx) * 0.01f;
         by += (v[5] - by) * 0.01f;
@@ -207,6 +215,10 @@ void loop() {
   if (on && !was) { st = 0; turns = 0; tgt = hdg; iacc = 0; }
   was = on;
   if (on) pilot(now);
+  bool h = !on && holdAt && (long)(millis() - holdAt) < 400;
+  if (h && !held) { tgt = hdg; iacc = 0; }
+  held = h;
+  if (h) { setLeft(holdV - corr); setRight(holdV + corr); }
   for (int i = 0; i < 4; i++) if (now - last[i] > TIMEOUT_MS) val[i] = 0;
   int f = mm(echoes[1]), b = mm(echoes[0]), sum = val[0] + val[2];
   if ((sum > 0 && f >= 0 && f < STOP_MM) || (sum < 0 && b >= 0 && b < STOP_MM)) {

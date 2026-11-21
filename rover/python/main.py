@@ -1,5 +1,7 @@
+import json
 import threading
 import time
+from urllib.request import urlopen
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -7,6 +9,8 @@ from arduino.app_utils import App, Bridge
 
 PORT = 8080
 STALE = 0.4
+CAM = "http://172.17.0.1:8081"
+CRUISE, SPIN = 170, 150
 
 state = {"l": 0, "r": 0, "ts": 0.0}
 test = {"m": -1, "v": 0, "until": 0.0}
@@ -15,6 +19,74 @@ hits = 0
 sense = (-1, -1, -99999, -1)
 auto = {"on": False, "seen": 0.0}
 want_cal = False
+patrol_st = {"state": "idle", "id": "", "cp": -1, "legs": 0, "err": ""}
+cmd = None
+RUNNING = ("selfcheck", "drive", "capture", "turn")
+
+
+def cam(path):
+    try:
+        return json.loads(urlopen(CAM + path, timeout=3).read())
+    except (OSError, ValueError):
+        return {}
+
+
+def wait(cond, limit):
+    t = time.time()
+    while not cond():
+        if patrol_st["state"] == "abort":
+            raise RuntimeError("aborted")
+        if time.time() - t > limit:
+            raise RuntimeError("timeout in " + patrol_st["state"])
+        time.sleep(0.05)
+
+
+def spin(deg, d=1):
+    global cmd
+    h0 = sense[2]
+    cmd = ("lr", d * SPIN, -d * SPIN)
+    wait(lambda: abs(sense[2] - h0) >= deg * 10, 4)
+    cmd = ("lr", 0, 0)
+    time.sleep(0.4)
+
+
+def warm(pid):
+    try:
+        with urlopen(CAM + "/v", timeout=5) as r:
+            while patrol_st["id"] == pid and patrol_st["state"] in RUNNING:
+                r.read(4096)
+    except OSError:
+        pass
+
+
+def patrol(legs, stop_mm):
+    global cmd
+    pid = time.strftime("p%Y%m%d-%H%M%S")
+    patrol_st.update(state="selfcheck", id=pid, cp=-1, legs=legs, err="")
+    threading.Thread(target=warm, args=(pid,), daemon=True).start()
+    try:
+        if sense[2] <= -99999:
+            raise RuntimeError("no gyro")
+        spin(20)
+        spin(20, -1)
+        for k in range(legs):
+            patrol_st.update(state="drive", cp=k)
+            cmd = ("hold", CRUISE)
+            wait(lambda: 0 <= sense[1] <= stop_mm, 30)
+            cmd = ("lr", 0, 0)
+            patrol_st["state"] = "capture"
+            time.sleep(0.6)
+            cam("/rec/start/%s-cp%d" % (pid, k))
+            time.sleep(1.6)
+            if not cam("/rec/stop").get("frames"):
+                raise RuntimeError("no frames at cp%d" % k)
+            patrol_st["state"] = "turn"
+            spin(85)
+        patrol_st["state"] = "done"
+    except RuntimeError as e:
+        patrol_st.update(state="failed", err=str(e))
+    finally:
+        cmd = None
 
 PAGE = """<!doctype html><html><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
@@ -164,6 +236,8 @@ class H(BaseHTTPRequestHandler):
             with lock:
                 if q.get("l", ["0"])[0] != "0" or q.get("r", ["0"])[0] != "0":
                     auto["on"] = False
+                    if patrol_st["state"] in RUNNING:
+                        patrol_st["state"] = "abort"
                 state.update(l=clamp(q.get("l", ["0"])[0]), r=clamp(q.get("r", ["0"])[0]), ts=time.time())
             self._nc(204)
         elif u.path == "/t":
@@ -174,6 +248,18 @@ class H(BaseHTTPRequestHandler):
             with lock:
                 auto.update(on=q.get("on", ["0"])[0] == "1", seen=time.time())
             self._nc(204)
+        elif u.path == "/patrol":
+            if "abort" in q and patrol_st["state"] in RUNNING:
+                patrol_st["state"] = "abort"
+            elif "legs" in q and patrol_st["state"] not in RUNNING:
+                patrol_st["state"] = "selfcheck"
+                threading.Thread(target=patrol, args=(clamp(q["legs"][0]), clamp(q.get("stop", ["350"])[0])), daemon=True).start()
+            b = json.dumps(patrol_st).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(b)))
+            self.end_headers()
+            self.wfile.write(b)
         elif u.path == "/cal":
             global want_cal
             want_cal = True
@@ -217,8 +303,14 @@ def loop():
         au = auto["on"]
         l, r, ts = state["l"], state["r"], state["ts"]
         tm, tv, tu = test["m"], test["v"], test["until"]
-    Bridge.notify("auto", int(au))
-    if au:
+    c = cmd
+    Bridge.notify("auto", int(au and not c))
+    if c and c[0] == "hold":
+        Bridge.notify("hold", c[1])
+    elif c:
+        Bridge.notify("left", c[1])
+        Bridge.notify("right", c[2])
+    elif au:
         pass
     elif 0 <= tm <= 3 and now < tu:
         for i in range(4):
@@ -230,7 +322,7 @@ def loop():
         Bridge.notify("right", r)
     if now - log_t > 5:
         log_t = now
-        print("[rccar] hits=%d l=%d r=%d sense=%s" % (hits, l, r, sense), flush=True)
+        print("[rccar] hits=%d l=%d r=%d sense=%s patrol=%s" % (hits, l, r, sense, patrol_st), flush=True)
     time.sleep(0.05)
 
 
