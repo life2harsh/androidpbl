@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ADB = ["adb", "-s", "HMCQEY89PNEAC66X"]
 JAR = "/data/local/tmp/scrcpy-server.jar"
-ARGS = ("tunnel_forward=true audio=false control=true clipboard_autosync=false power_on=false cleanup=false video_source=camera camera_id=0 "
+ARGS = ("tunnel_forward=true audio=false control=true clipboard_autosync=false power_on=false cleanup=false video_source=camera "
         "camera_size=640x480 camera_fps=30 video_codec=h264 video_bit_rate=1000000 "
         "video_codec_options=i-frame-interval=1 send_dummy_byte=false send_device_meta=false "
         "send_frame_meta=true")
@@ -20,6 +20,11 @@ IDLE = 10
 cv = threading.Condition()
 st = {"cfg": b"", "frame": b"", "key": False, "seq": 0, "viewers": 0, "torch": False, "ctl": None}
 rec = {}
+CFG = "/cam/cfg.json"
+try:
+    cfg = json.load(open(CFG))
+except (OSError, ValueError):
+    cfg = {"rot": 180, "id": 0}
 
 
 def rec_start(name):
@@ -96,7 +101,7 @@ def run():
         adb("wait-for-device")
         adb("push", "/scrcpy-server", JAR)
         adb("forward", "tcp:27183", "localabstract:scrcpy")
-        p = subprocess.Popen(ADB + ["shell", f"CLASSPATH={JAR} app_process / com.genymobile.scrcpy.Server 5.0.1 {ARGS} camera_torch={str(st['torch']).lower()}"])
+        p = subprocess.Popen(ADB + ["shell", f"CLASSPATH={JAR} app_process / com.genymobile.scrcpy.Server 5.0.1 {ARGS} camera_id={cfg['id']} capture_orientation={cfg['rot']} camera_torch={str(st['torch']).lower()}"])
         idle = None
         try:
             s, st["ctl"] = connect()
@@ -144,6 +149,13 @@ class H(BaseHTTPRequestHandler):
         if self.path == "/jmuxer.js":
             self.head("text/javascript")
             self.wfile.write(JS)
+        elif m := re.fullmatch(r"/cam(/rot|/switch)?", self.path):
+            if m[1]:
+                cfg["rot" if m[1] == "/rot" else "id"] ^= 180 if m[1] == "/rot" else 1
+                json.dump(cfg, open(CFG, "w"))
+                adb("shell", "pkill", "-f", "com.genymobile")
+            self.head("application/json")
+            self.wfile.write(json.dumps(cfg).encode())
         elif m := re.fullmatch(r"/torch/([01])", self.path):
             st["torch"] = m[1] == "1"
             try:

@@ -134,6 +134,10 @@ class MainActivity : Activity(), SensorEventListener {
             addView(status)
             setOnLongClickListener { askHost(); true }
         }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { setMargins(dp(10), dp(10), 0, 0) })
+        addView(LinearLayout(context).apply {
+            for ((t, path) in listOf("⟳" to "/cam/rot", "⇄" to "/cam/switch"))
+                addView(button(t).apply { background = bg("#990D0F12", 10); setOnClickListener { camCfg(path) } }, lp(dp(44), dp(44)).apply { leftMargin = dp(6) })
+        }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply { setMargins(0, dp(10), dp(10), 0) })
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -195,6 +199,11 @@ class MainActivity : Activity(), SensorEventListener {
             prefs.edit().putString("host", rover.host).apply()
             video?.close()
         }.setNegativeButton("Cancel", null).show()
+    }
+
+    private fun camCfg(path: String) = thread {
+        val r = rover.get(path, 8081)
+        ui.post { status.text = if (r == null) "camera offline" else if (path.endsWith("rot")) "rotated" else "switched camera" }
     }
 
     private fun toggleTorch() = thread {
