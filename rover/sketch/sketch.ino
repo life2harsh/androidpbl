@@ -2,7 +2,7 @@
 #include <Wire.h>
 
 struct Motor { int en, in1, in2, invert; };
-struct Echo { int pin; volatile unsigned long start, us, at, h[3]; volatile int i; };
+struct Echo { int pin; volatile unsigned long start, us, at; volatile long c; volatile int n; };
 
 Motor motors[4] = {
   {5, 7, 8, 0},
@@ -24,7 +24,10 @@ int bad = 0;
 int16_t pv[7];
 volatile bool wantCal = false;
 volatile unsigned long autoAt = 0, holdAt = 0;
-volatile int holdV = 0, holdStop = 0;
+volatile int holdV = 0, holdStop = 0, turnV = 0;
+volatile unsigned long turnAt = 0;
+bool turning = false, tdone = false;
+float th0 = 0;
 bool held = false, near = false, stopped = false;
 bool was = false;
 int st = 0, turns = 0, dir = 0;
@@ -39,13 +42,11 @@ void drive(Motor &m, int v, unsigned long phase) {
 }
 
 void edge(Echo &e) {
-  if (digitalRead(e.pin)) e.start = micros();
-  else {
-    e.h[e.i = (e.i + 1) % 3] = micros() - e.start;
-    unsigned long a = e.h[0], b = e.h[1], c = e.h[2];
-    e.us = max(min(a, b), min(max(a, b), c));
-    e.at = millis();
-  }
+  if (digitalRead(e.pin)) { e.start = micros(); return; }
+  long r = micros() - e.start;
+  if (labs(r - e.c) < 900) e.n++;
+  else { e.c = r; e.n = 1; }
+  if (labs(r - (long)e.us) < 900 || e.n >= 3) { e.us = r; e.at = millis(); }
 }
 void onUp() { edge(echoes[0]); }
 void onFront() { edge(echoes[1]); }
@@ -126,6 +127,7 @@ void autoRpc(int v) { autoAt = v ? millis() | 1 : 0; }
 void holdRpc(int v) { holdV = v; holdAt = millis() | 1; }
 int dirRpc() { return dir; }
 void stopRpc(int v) { holdStop = v; }
+void turnRpc(int v) { turnV = v; turnAt = millis() | 1; }
 int mode() { return was ? st : -1; }
 
 void pilot(unsigned long now) {
@@ -177,6 +179,7 @@ void setup() {
   Bridge.provide("hold", holdRpc);
   Bridge.provide("dir", dirRpc);
   Bridge.provide("stopmm", stopRpc);
+  Bridge.provide("turn", turnRpc);
   Wire.begin();
   Wire.setClock(100000);
   calibrate();
@@ -225,6 +228,15 @@ void loop() {
   bool h = !on && holdAt && (long)(millis() - holdAt) < 400;
   if (h && !held) { tgt = hdg; iacc = 0; near = stopped = false; }
   held = h;
+  bool tr = !on && !h && turnAt && (long)(millis() - turnAt) < 400;
+  if (tr && !turning) { th0 = hdg; tdone = false; }
+  turning = tr;
+  if (tr && !tdone) {
+    tdone = fabsf(turnV / 10.0f) - fabsf(hdg - th0) <= fabsf(rate) * 0.12f;
+    int s = tdone ? 0 : turnV > 0 ? SPIN : -SPIN;
+    setLeft(s);
+    setRight(-s);
+  }
   if (h) {
     int f = mm(echoes[1]);
     near |= f >= 0 && f < 2 * holdStop;

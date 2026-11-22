@@ -21,7 +21,6 @@ auto = {"on": False, "seen": 0.0}
 want_cal = False
 patrol_st = {"state": "idle", "id": "", "cp": -1, "legs": 0, "err": ""}
 cmd = None
-over = [25.0]
 RUNNING = ("selfcheck", "drive", "capture", "turn")
 
 
@@ -47,13 +46,11 @@ def wait(cond, limit):
 def spin(deg, d=1):
     global cmd
     h0 = sense[2]
-    goal = max(deg * 0.4, deg - over[0]) if deg > 45 else deg
-    cmd = ("lr", d * SPIN, -d * SPIN)
-    wait(lambda: abs(sense[2] - h0) >= goal * 10, 4)
+    cmd = ("turn", d * deg * 10)
+    wait(lambda: abs(sense[2] - h0) >= (deg - 15) * 10, 4)
+    time.sleep(0.5)
     cmd = ("lr", 0, 0)
-    time.sleep(0.4)
-    if deg > 45:
-        over[0] = min(60.0, max(0.0, over[0] + 0.5 * (abs(sense[2] - h0) / 10 - deg)))
+    time.sleep(0.45)
 
 
 def warm(pid):
@@ -321,8 +318,8 @@ def loop():
         tm, tv, tu = test["m"], test["v"], test["until"]
     c = cmd
     Bridge.notify("auto", int(au and not c))
-    if c and c[0] == "hold":
-        Bridge.notify("hold", c[1])
+    if c and c[0] in ("hold", "turn"):
+        Bridge.notify(c[0], c[1])
     elif c:
         Bridge.notify("left", c[1])
         Bridge.notify("right", c[2])
