@@ -130,7 +130,7 @@ def detector_loop():
 def grab():
     live["until"] = time.time() + 8
     after = time.time() + 0.15
-    for _ in range(30):
+    for _ in range(12):
         try:
             return cv2.imdecode(np.frombuffer(urlopen(f"{CAM}/live.jpg?after={after:.3f}", timeout=2).read(), np.uint8), cv2.IMREAD_COLOR)
         except OSError:
