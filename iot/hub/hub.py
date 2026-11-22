@@ -5,7 +5,7 @@ import sqlite3
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 from urllib.request import Request, urlopen
 
 import numpy as np
@@ -53,7 +53,7 @@ def get(path):
 def start_patrol(legs):
     try:
         get(f"/patrol?legs={int(legs)}&stop=350")
-    except OSError:
+    except (OSError, TypeError, ValueError):
         pass
 
 
@@ -66,8 +66,8 @@ def on_local(c, u, m):
         if cmd.get("patrol"):
             start_patrol(cmd["patrol"])
         elif cmd.get("search"):
-            get(f"/search?cls={cmd['search']}&color={cmd.get('color', '')}")
-    except OSError:
+            get(f"/search?cls={quote(str(cmd['search']))}&color={quote(str(cmd.get('color', '')))}")
+    except (OSError, AttributeError, TypeError, ValueError):
         pass
 
 
@@ -178,6 +178,7 @@ class H(BaseHTTPRequestHandler):
 
 
 local = mqtt.Client(API, "hub")
+local.suppress_exceptions = True
 local.on_connect = lambda c, *a: c.subscribe("rover/cmd")
 local.on_message = on_local
 local.connect_async("127.0.0.1")
@@ -203,6 +204,7 @@ def cloud():
     if not AWS:
         return None
     c = mqtt.Client(API, THING)
+    c.suppress_exceptions = True
     c.tls_set(f"{DATA}/certs/ca.pem", f"{DATA}/certs/cert.pem", f"{DATA}/certs/key.pem")
     c.on_connect = lambda c, *a: c.subscribe(SHADOW + "/update/delta", 1)
     c.on_message = on_shadow

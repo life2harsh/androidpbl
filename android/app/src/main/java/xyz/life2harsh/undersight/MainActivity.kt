@@ -236,7 +236,8 @@ class MainActivity : Activity(), SensorEventListener {
             "found" -> "Found $g ✓" to "#2EA043"
             "failed" -> "Failed: ${j.optString("err")}" to "#DA3633"
             "abort" -> "Stopping…" to "#9A6700"
-            "selfcheck", "drive", "capture", "turn" -> "Patrol leg ${j.optInt("cp") + 2}/${j.optInt("legs")}: $s…" to "#1F6FEB"
+            "selfcheck" -> "Patrol: self-check…" to "#1F6FEB"
+            "drive", "capture", "turn" -> "Patrol leg ${j.optInt("cp") + 1}/${j.optInt("legs")}: $s…" to "#1F6FEB"
             "done" -> "Patrol done ✓" to "#2EA043"
             else -> "" to "#000000"
         }

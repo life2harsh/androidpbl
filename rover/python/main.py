@@ -23,7 +23,7 @@ auto = {"on": False, "seen": 0.0}
 want_cal = False
 patrol_st = {"state": "idle", "id": "", "cp": -1, "legs": 0, "err": ""}
 cmd = None
-RUNNING = ("selfcheck", "drive", "capture", "turn", "search", "approach")
+RUNNING = ("selfcheck", "drive", "capture", "turn", "search", "approach", "abort")
 
 
 def cam(path):
