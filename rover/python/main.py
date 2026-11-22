@@ -155,9 +155,13 @@ def search(cls, col=""):
                 time.sleep(0.3)
                 side = ways[0] if ways else side
                 spin(90, side)
-                if not ways and 0 <= sense[1] <= 400:
-                    side = -side
-                    spin(180, side)
+                if not ways:
+                    room = sense[1] if sense[1] >= 0 else 9999
+                    spin(180, -side)
+                    if 0 <= sense[1] < room:
+                        spin(180, side)
+                    else:
+                        side = -side
                 ways.append(side)
                 fwd(0.8)
                 spin(90, -side)
