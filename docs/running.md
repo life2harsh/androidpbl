@@ -7,7 +7,7 @@
 - **IoT stack:**
   1. `cd ~/undersight/iot`
   2. Create `.env` (chmod 600) with `TS_KEY`, `TS_CHANNEL`, `AWS_ENDPOINT` and `THING`.
-  3. Put the certs in `data/certs/{key,cert,ca}.pem` and the model in `data/models/nanodet.onnx`.
+  3. Put the certs in `data/certs/{key,cert,ca}.pem` and the models in `data/models/` (`world_320.onnx`, `world_416.onnx`, `classes.txt`).
   4. Run `docker compose up -d --build`.
 - **Dashboard:** `http://<board>:1880/dashboard`
 
