@@ -147,15 +147,18 @@ def search(cls, col=""):
             if d["area"] > 0.3:
                 break
             if 0 <= sense[1] <= 450:
-                if d["area"] >= 0.05 or len(ways) == 2:
+                if d["area"] >= 0.05 or len(ways) == 3:
                     break
-                side = -ways[0] if ways else side
-                ways.append(side)
                 cmd = ("lr", -CRUISE, -CRUISE)
                 time.sleep(0.6)
                 cmd = ("lr", 0, 0)
                 time.sleep(0.3)
+                side = ways[0] if ways else side
                 spin(50, side)
+                if not ways and 0 <= sense[1] <= 600:
+                    side = -side
+                    spin(100, side)
+                ways.append(side)
                 fwd(1.0)
                 n = reacquire(q, brg, -side)
             else:
