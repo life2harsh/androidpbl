@@ -87,7 +87,7 @@ def reacquire(q, brg, side):
     for _ in range(4):
         if n.get("found"):
             return n
-        spin(15, side)
+        spin(30, side)
         n = hub(q)
     if not n.get("found"):
         face(brg)
@@ -162,7 +162,7 @@ def search(cls, col=""):
                     break
                 h0 = sense[2] / 10
                 sc = scan()
-                ok = [a for i, (a, m) in enumerate(sc) if all(not 0 <= x[1] < 500 for x in sc[max(i - 1, 0):i + 2])]
+                ok = [a for i, (a, m) in enumerate(sc) if abs(a) > 20 and all(not 0 <= x[1] < 500 for x in sc[max(i - 1, 0):i + 2])]
                 if not ok:
                     break
                 a = min(ok, key=lambda a: abs(a - rsign * (brg - h0)))
