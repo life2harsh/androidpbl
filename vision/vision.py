@@ -53,15 +53,17 @@ def ssim(a, b):
     return (2 * ma * mb + c1) * (2 * cab + c2) / ((ma * ma + mb * mb + c1) * (va + vb + c2))
 
 
-def compare(ref, cur, dist_mm=400, fov_deg=66, thresh=0.45, min_cm2=2.0):
+def compare(ref, cur, dist_mm=400, fov_deg=66, thresh=0.45, min_cm2=2.0, min_diff=25):
     h, w = ref.shape
     H, inliers = align(ref, cur)
     if H is None:
         return {"verdict": "REVIEW", "reason": "no_alignment", "inliers": inliers, "regions": []}, None
     warped = cv2.warpPerspective(cur, H, (w, h))
-    valid = cv2.erode(cv2.warpPerspective(np.full_like(cur, 255), H, (w, h)), np.ones((15, 15), np.uint8)) > 0
-    s = ssim(CLAHE.apply(ref), CLAHE.apply(warped))
-    mask = ((s < thresh) & valid).astype(np.uint8) * 255
+    valid = cv2.erode(cv2.warpPerspective(np.full_like(cur, 255), H, (w, h)), np.ones((31, 31), np.uint8)) > 0
+    a, b = CLAHE.apply(ref), CLAHE.apply(warped)
+    s = ssim(a, b)
+    d = cv2.absdiff(cv2.GaussianBlur(a, (9, 9), 0), cv2.GaussianBlur(b, (9, 9), 0))
+    mask = ((s < thresh) & (d > min_diff) & valid).astype(np.uint8) * 255
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
     cm_px = 2 * dist_mm / 10 * math.tan(math.radians(fov_deg / 2)) / w
