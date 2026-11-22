@@ -26,7 +26,8 @@ cmd = None
 rsign = -1
 acclog = None
 acc_res = {}
-RUNNING = ("selfcheck", "drive", "capture", "turn", "search", "approach", "abort")
+scan_res = {}
+RUNNING = ("selfcheck", "drive", "capture", "turn", "search", "approach", "scan", "abort")
 
 
 def cam(path):
@@ -68,6 +69,16 @@ def face(brg):
 
 def sight(d):
     return sense[2] / 10 + rsign * (d["cx"] - 0.5) * 66
+
+
+def scan():
+    h0 = sense[2] / 10
+    out = []
+    for a in range(-90, 91, 15):
+        face(h0 + rsign * a)
+        out.append([round((sense[2] / 10 - h0) * rsign), front_med()])
+    face(h0)
+    return out
 
 
 def reacquire(q, brg, side):
@@ -150,23 +161,23 @@ def search(cls, col=""):
                 if d["area"] >= 0.05 or len(ways) == 3:
                     break
                 cmd = ("lr", -CRUISE, -CRUISE)
-                time.sleep(0.6)
+                time.sleep(1.0)
                 cmd = ("lr", 0, 0)
                 time.sleep(0.3)
                 side = ways[0] if ways else side
-                spin(90, side)
+                spin(45, side)
                 if not ways:
                     room = sense[1] if sense[1] >= 0 else 9999
-                    spin(180, -side)
+                    spin(90, -side)
                     if 0 <= sense[1] < room:
-                        spin(180, side)
+                        spin(90, side)
                     else:
                         side = -side
                 ways.append(side)
-                fwd(0.8)
-                spin(90, -side)
+                fwd(1.0)
+                spin(45, -side)
                 if not 0 <= sense[1] <= 450:
-                    fwd(1.0)
+                    fwd(0.8)
                 n = reacquire(q, brg, -side)
             else:
                 fwd(1.2)
@@ -195,6 +206,18 @@ def front_med():
         time.sleep(0.05)
     v = sorted(x for x in v if x >= 0)
     return v[len(v) // 2] if v else -1
+
+
+def scantest():
+    global cmd
+    patrol_st.update(state="scan", id="scan", cp=-1, legs=0, err="")
+    try:
+        scan_res["scan"] = scan()
+        patrol_st["state"] = "done"
+    except RuntimeError as e:
+        fail("Scan", e)
+    finally:
+        cmd = None
 
 
 def acctest(t, back=False):
@@ -442,6 +465,12 @@ class H(BaseHTTPRequestHandler):
                 patrol_st["state"] = "search"
                 threading.Thread(target=search, args=(q["cls"][0], q.get("color", [""])[0]), daemon=True).start()
             self._json(json.dumps(patrol_st).encode())
+        elif u.path == "/scan":
+            if "go" in q and patrol_st["state"] not in RUNNING:
+                patrol_st["state"] = "scan"
+                scan_res.clear()
+                threading.Thread(target=scantest, daemon=True).start()
+            self._json(json.dumps(scan_res).encode())
         elif u.path == "/acctest":
             if patrol_st["state"] not in RUNNING:
                 patrol_st["state"] = "drive"
