@@ -114,7 +114,7 @@ def reader():
 def publish_dets(f, dets):
     h, w = f.shape[:2]
     out = [dict(d, colour=colour(f, d["box"]), box=[round(d["box"][0] / w, 3), round(d["box"][1] / h, 3), round(d["box"][2] / w, 3), round(d["box"][3] / h, 3)])
-           for d in dets if d["score"] >= 0.3]
+           for d in dets if d["score"] >= 0.2]
     live["out"] = json.dumps({"ts": time.time(), "dets": out}).encode()
 
 
@@ -124,7 +124,7 @@ def detector_loop():
         if f is None or time.time() - live["look_at"] < 5:
             time.sleep(0.03)
             continue
-        publish_dets(f, detector(f, 0.3))
+        publish_dets(f, detector(f, 0.2))
 
 
 def grab():
@@ -141,7 +141,7 @@ def grab():
 def look(cls, sid, col="", near=None):
     live["look_at"] = time.time()
     img = grab()
-    dets = detector(img, 0.25)
+    dets = detector(img, 0.15)
     live["look_at"] = time.time()
     publish_dets(img, dets)
     hits = [dict(d, colour=colour(img, d["box"])) for d in dets if same(d["cls"], cls)]
