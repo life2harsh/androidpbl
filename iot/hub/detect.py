@@ -6,7 +6,7 @@ import onnxruntime as ort
 
 
 class Detector:
-    def __init__(self, path, names, threads=4):
+    def __init__(self, path, names, threads=3):
         o = ort.SessionOptions()
         o.intra_op_num_threads = threads
         self.sess = ort.InferenceSession(path, o, providers=["CPUExecutionProvider"])

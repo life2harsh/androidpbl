@@ -74,7 +74,7 @@ def on_local(c, u, m):
 detector = Detector(f"{DATA}/models/worldm_320.onnx", f"{DATA}/models/classes2.txt")
 GROUPS = ({"shoe", "sneaker", "sandal", "slipper", "footwear"}, {"bag", "backpack"})
 same = lambda a, b: a == b or any(a in g and b in g for g in GROUPS)
-live = {"until": 0.0, "frame": None, "out": b'{"dets": []}'}
+live = {"until": 0.0, "frame": None, "out": b'{"dets": []}', "look_at": 0.0}
 HUES = ((10, "red"), (22, "orange"), (35, "yellow"), (85, "green"), (130, "blue"), (160, "purple"), (180, "red"))
 
 
@@ -111,21 +111,40 @@ def reader():
         live["frame"] = None
 
 
+def publish_dets(f, dets):
+    h, w = f.shape[:2]
+    out = [dict(d, colour=colour(f, d["box"]), box=[round(d["box"][0] / w, 3), round(d["box"][1] / h, 3), round(d["box"][2] / w, 3), round(d["box"][3] / h, 3)])
+           for d in dets if d["score"] >= 0.3]
+    live["out"] = json.dumps({"ts": time.time(), "dets": out}).encode()
+
+
 def detector_loop():
     while True:
         f, live["frame"] = live["frame"], None
-        if f is None:
+        if f is None or time.time() - live["look_at"] < 5:
             time.sleep(0.03)
             continue
-        h, w = f.shape[:2]
-        dets = [dict(d, colour=colour(f, d["box"]), box=[round(d["box"][0] / w, 3), round(d["box"][1] / h, 3), round(d["box"][2] / w, 3), round(d["box"][3] / h, 3)])
-                for d in detector(f, 0.3)]
-        live["out"] = json.dumps({"ts": time.time(), "dets": dets}).encode()
+        publish_dets(f, detector(f, 0.3))
+
+
+def grab():
+    live["until"] = time.time() + 8
+    after = time.time() + 0.15
+    for _ in range(30):
+        try:
+            return cv2.imdecode(np.frombuffer(urlopen(f"{CAM}/live.jpg?after={after:.3f}", timeout=2).read(), np.uint8), cv2.IMREAD_COLOR)
+        except OSError:
+            time.sleep(0.1)
+    return cv2.imdecode(np.frombuffer(urlopen(CAM + "/snap.jpg", timeout=10).read(), np.uint8), cv2.IMREAD_COLOR)
 
 
 def look(cls, sid, col="", near=None):
-    img = cv2.imdecode(np.frombuffer(urlopen(CAM + "/snap.jpg", timeout=10).read(), np.uint8), cv2.IMREAD_COLOR)
-    hits = [dict(d, colour=colour(img, d["box"])) for d in detector(img, 0.25) if same(d["cls"], cls)]
+    live["look_at"] = time.time()
+    img = grab()
+    dets = detector(img, 0.25)
+    live["look_at"] = time.time()
+    publish_dets(img, dets)
+    hits = [dict(d, colour=colour(img, d["box"])) for d in dets if same(d["cls"], cls)]
     W = img.shape[1]
     best = max(hits, key=lambda d: d["score"] + 0.3 * (d["colour"] == col) - (abs((d["box"][0] + d["box"][2] / 2) / W - near) if near is not None else 0)) if hits else None
     r = {"sid": sid, "cls": cls, "colour": col, "found": bool(best), "ts": time.time()}

@@ -23,6 +23,7 @@ auto = {"on": False, "seen": 0.0}
 want_cal = False
 patrol_st = {"state": "idle", "id": "", "cp": -1, "legs": 0, "err": ""}
 cmd = None
+rsign = -1
 acclog = None
 acc_res = {}
 RUNNING = ("selfcheck", "drive", "capture", "turn", "search", "approach", "abort")
@@ -48,13 +49,25 @@ def wait(cond, limit):
 
 
 def spin(deg, d=1):
-    global cmd
+    global cmd, rsign
     h0 = sense[2]
     cmd = ("turn", int(d * deg * 10))
     wait(lambda: abs(sense[2] - h0) >= (deg - 15) * 10, 4)
     time.sleep(0.5)
     cmd = ("lr", 0, 0)
     time.sleep(0.45)
+    if abs(sense[2] - h0) > 100:
+        rsign = 1 if (sense[2] - h0) * d > 0 else -1
+
+
+def face(brg):
+    e = (brg - sense[2] / 10) * rsign
+    if abs(e) > 5:
+        spin(abs(e), 1 if e > 0 else -1)
+
+
+def sight(d):
+    return sense[2] / 10 + rsign * (d["cx"] - 0.5) * 66
 
 
 def fwd(t, stop=450):
@@ -112,7 +125,7 @@ def search(cls, col=""):
         else:
             raise RuntimeError(("no %s %s found" % (col, cls)).replace("  ", " "))
         patrol_st["state"] = "approach"
-        ways = []
+        ways, brg = [], sight(d)
         for _ in range(8):
             err = (d["cx"] - 0.5) * 66
             side = -1 if err < 0 else 1
@@ -131,12 +144,21 @@ def search(cls, col=""):
                 time.sleep(0.3)
                 spin(50, side)
                 fwd(1.0)
-                spin(50, -side)
+                face(brg)
                 n = hub(q)
+                for turn in (-20 * side, 40 * side):
+                    if n.get("found"):
+                        break
+                    spin(abs(turn), 1 if turn > 0 else -1)
+                    n = hub(q)
+                if not n.get("found"):
+                    face(brg)
             else:
                 fwd(1.2)
                 n = hub(q + "&near=%.3f" % 0.5)
-            d = n if n.get("found") else d
+            d = n if n.get("found") else dict(d, cx=0.5)
+            if n.get("found"):
+                brg = sight(d)
         n = hub(q + "&near=%.3f" % 0.5)
         d = n if n.get("found") else d
         d.update(hdg=sense[2] / 10, dist_mm=sense[1], blocked=0 <= sense[1] <= 450 and d["area"] < 0.05)

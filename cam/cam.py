@@ -21,7 +21,7 @@ IDLE = 10
 cv = threading.Condition()
 st = {"cfg": b"", "frame": b"", "key": False, "seq": 0, "viewers": 0, "torch": False, "ctl": None, "kf": b"", "kseq": 0}
 rec = {}
-dec = {"proc": None, "jpg": b"", "until": 0.0, "live": False}
+dec = {"proc": None, "jpg": b"", "ts": 0.0, "until": 0.0, "live": False}
 
 
 def dec_read(p):
@@ -30,6 +30,7 @@ def dec_read(p):
         buf += chunk
         while (e := buf.find(b"\xff\xd9")) >= 0:
             dec["jpg"], buf = buf[buf.find(b"\xff\xd8"):e + 2], buf[e + 2:]
+            dec["ts"] = time.time()
 
 
 def dec_feed(pf, d):
@@ -199,11 +200,11 @@ class H(BaseHTTPRequestHandler):
         if self.path == "/jmuxer.js":
             self.head("text/javascript")
             self.wfile.write(JS)
-        elif self.path == "/live.jpg":
+        elif m := re.fullmatch(r"/live\.jpg(?:\?after=([\d.]+))?", self.path):
             with cv:
                 dec_start()
                 cv.notify_all()
-            if dec["jpg"]:
+            if dec["jpg"] and dec["ts"] > float(m[1] or 0):
                 self.head("image/jpeg")
                 self.wfile.write(dec["jpg"])
             else:
