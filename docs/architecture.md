@@ -24,7 +24,7 @@
 - **Firmware owns time-critical control.** Stopping at a distance and turning to an angle run in the MCU loop. When this lived in Python, RPC and loop latency caused 16 cm overshoot on stops and 116° on an 85° turn.
 - **Python owns sequencing.** Patrol and search are state machines that send setpoints (`hold`, `turn`, `stopmm`) and wait on telemetry.
 - **The hub owns data.** It polls the rover at 1 Hz, writes everything to SQLite first, and publishes from there. If WiFi or the cloud drops, rows wait in the `outbox` table and are sent later (AWS QoS 1 in batches of 100, ThingSpeak bulk updates every 16 s).
-- **Detection runs at the edge.** YOLO-World (open vocabulary, 40 words) runs on the board at about 0.6 s per frame live, 1 s per search look. No video leaves the device; only verdict images go to S3.
+- **Detection runs at the edge.** YOLO-World m (open vocabulary, 30 words) runs on the board at about 1.6 s per frame. No video leaves the device; only verdict images go to S3.
 
 ## Patrol state machine
 
@@ -42,7 +42,7 @@ When the patrol is done, the hub compares each checkpoint with the same checkpoi
 
 `search → approach → found | lost | failed`
 
-1. **Look:** the hub grabs a fresh frame and runs YOLO-World (416 px, score > 0.25). Of the detections matching the class, the best one is chosen by score, plus 0.3 if its colour matches the requested colour. Colour only ranks candidates and never rejects one, because colour under room lighting is unreliable. Every look frame is saved to `/scans/<sid>/look-*.jpg`.
+1. **Look:** the hub grabs a fresh frame and runs YOLO-World m (320 px, score > 0.25, synonyms accepted). Of the detections matching the class, the best one is chosen by score, plus 0.3 if its colour matches the requested colour. Colour only ranks candidates and never rejects one, because colour under room lighting is unreliable. Every look frame is saved to `/scans/<sid>/look-*.jpg`.
 2. **Scan:** if no object of the class is in view, spin 30° and look again, up to 13 times (a full circle). The first look happens before any spin, so an object already in front is found immediately.
 3. **Approach:** heading error = (box centre x − 0.5) × 66° FOV. Spin if the error is over 8°, otherwise drive 1.2 s with a firmware stop at 45 cm, then look again, up to 6 times. Re-looks prefer the detection closest to the image centre (`near=0.5`), so the rover stays on the object it was heading for (one shoe of a pair, not the other).
 4. **Stop:** when the front distance is ≤ 45 cm or the box fills over 30% of the frame. Report the heading and distance to `rover/found`.

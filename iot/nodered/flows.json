@@ -599,6 +599,11 @@
     "type": "str"
    },
    {
+    "label": "sneaker",
+    "value": "sneaker",
+    "type": "str"
+   },
+   {
     "label": "sandal",
     "value": "sandal",
     "type": "str"
@@ -606,6 +611,11 @@
    {
     "label": "slipper",
     "value": "slipper",
+    "type": "str"
+   },
+   {
+    "label": "footwear",
+    "value": "footwear",
     "type": "str"
    },
    {
@@ -699,18 +709,8 @@
     "type": "str"
    },
    {
-    "label": "glasses",
-    "value": "glasses",
-    "type": "str"
-   },
-   {
     "label": "remote",
     "value": "remote",
-    "type": "str"
-   },
-   {
-    "label": "toy",
-    "value": "toy",
     "type": "str"
    },
    {
@@ -719,18 +719,8 @@
     "type": "str"
    },
    {
-    "label": "table",
-    "value": "table",
-    "type": "str"
-   },
-   {
     "label": "door",
     "value": "door",
-    "type": "str"
-   },
-   {
-    "label": "plant",
-    "value": "plant",
     "type": "str"
    },
    {
@@ -746,46 +736,6 @@
    {
     "label": "towel",
     "value": "towel",
-    "type": "str"
-   },
-   {
-    "label": "headphones",
-    "value": "headphones",
-    "type": "str"
-   },
-   {
-    "label": "charger",
-    "value": "charger",
-    "type": "str"
-   },
-   {
-    "label": "clock",
-    "value": "clock",
-    "type": "str"
-   },
-   {
-    "label": "tv",
-    "value": "tv",
-    "type": "str"
-   },
-   {
-    "label": "toothbrush",
-    "value": "toothbrush",
-    "type": "str"
-   },
-   {
-    "label": "knife",
-    "value": "knife",
-    "type": "str"
-   },
-   {
-    "label": "scissors",
-    "value": "scissors",
-    "type": "str"
-   },
-   {
-    "label": "lamp",
-    "value": "lamp",
     "type": "str"
    }
   ],

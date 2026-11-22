@@ -14,22 +14,26 @@ Output: the verdict, inliers, SSIM, % area changed, regions, and a `diff.jpg` ov
 
 ## Object detection (`iot/hub/detect.py`)
 
-- **Model:** YOLO-World v2 (YOLOv8s backbone), an open-vocabulary detector. The vocabulary is fixed when exporting to ONNX, so it detects our own 40 words, including shoe, sandal, slipper, keys, wallet, bucket and fire extinguisher, which plain COCO models can't. The list is in `iot/data/models/classes.txt` and served at hub `/classes`. Changing it means re-exporting the model (`YOLOWorld("yolov8s-worldv2.pt").set_classes([...])`, then `export(format="onnx", imgsz=..., opset=12)`).
-- **Runtime:** ONNX Runtime on the CPU. OpenCV DNN can't load YOLO-World's text-embedding MatMul.
-- **Two sizes:** 320 px for live boxes (about 0.6 s per frame) and 416 px for search looks (about 1 s per frame, more accurate on small objects).
-- **Benchmark** on the UNO Q, using rover frames (``compare.jpg` in the commit notes`):
+- **Model:** YOLO-World v2 **m** (YOLOv8m backbone) at 320 px, an open-vocabulary detector. The vocabulary is fixed when exporting to ONNX, so it detects our own 30 words, including shoe, sneaker, sandal, slipper, keys, wallet, bucket and fire extinguisher. The list is in `iot/data/models/classes2.txt` and served at hub `/classes`. Changing it means re-exporting (`YOLOWorld("yolov8m-worldv2.pt").set_classes([...])`, then `export(format="onnx", imgsz=320, opset=12)`).
+- **The word list matters:** YOLO-World's scores depend on which words it's given. Adding "sneaker" and trimming unrelated words raised the shoe score from 0.54 to 0.73 on the same frame.
+- **Synonym groups:** a search for any of shoe / sneaker / sandal / slipper / footwear accepts the others, and the same goes for bag / backpack.
+- **Runtime:** ONNX Runtime on the CPU, about 1.6 s per frame on the UNO Q. One model serves both live boxes and search. OpenCV DNN can't load YOLO-World.
+- **Benchmark** on the UNO Q, using rover frames (boxes drawn in `model-benchmark.jpg`):
 
 | Model | ms/frame | Notes |
 |---|---|---|
-| NanoDet-Plus 416 (previous) | 288 | many false positives (car, bird, bed) |
+| NanoDet-Plus 416 (first version) | 288 | many false positives (car, bird, bed) |
 | SSD-MobileNet v2 300 | 291 | false positives, misses |
 | PicoDet-S 416 | 287 | false positives |
 | YOLO11n 320 / 416 | 154 / 253 | clean but misses most objects; no shoe class |
 | YOLOv8n 320 / 416 | 185 / 321 | similar to YOLO11n |
 | YOLO11s 320 / 416 | 448 / 726 | better recall; no shoe class |
-| **YOLO-World 320 / 416** | **622 / 1030** | finds shoes (0.4–0.63), person, bag, bucket; fewest wrong labels |
+| YOLO-World s 320 / 416 | 622 / 1030 | finds shoes (0.4–0.6) |
+| YOLO-World l 416 / 640 | (laptop test) | no better than m on our frames |
+| **YOLO-World m 320** | **1590** | shoes 0.70–0.87, finds sandals; best overall |
 
 - **Colour:** the median HSV of the central half of each box. Low value → black; low saturation → white/grey; otherwise hue bins for red, orange, yellow, green, blue and purple. This lets a search target be "red backpack" or "white person".
+- **Camera exposure:** scrcpy's `camera_fps` locks the frame rate, which caps exposure time. At 30 fps indoor frames averaged brightness 92/255; at 15 fps, 156. The bridge uses 15.
 - **Live path:** the cam bridge keeps one ffmpeg decoder running (`/live.jpg`, about 0.2 s old). The hub detector loop runs only while someone polls `/dets` (it stays alive 3 s after the last poll), so it costs nothing when idle.
 - **App:** draws the boxes over the video (the target class in red). Tapping a box sends `/search` with that box's class and colour, and the rover goes to it. Long-pressing FIND picks the class and colour from a list.
 
