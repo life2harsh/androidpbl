@@ -20,7 +20,7 @@ IDLE = 10
 cv = threading.Condition()
 st = {"cfg": b"", "frame": b"", "key": False, "seq": 0, "viewers": 0, "torch": False, "ctl": None}
 rec = {}
-CFG = "/cam/cfg.json"
+CFG = "/scans/cam.json"
 try:
     cfg = json.load(open(CFG))
 except (OSError, ValueError):
@@ -77,8 +77,8 @@ def recvn(s, n):
 
 
 def connect():
-    for _ in range(20):
-        time.sleep(0.5)
+    for _ in range(50):
+        time.sleep(0.2)
         socks = []
         try:
             socks = [socket.create_connection(("127.0.0.1", 27183), timeout=5) for _ in range(2)]
@@ -98,9 +98,11 @@ def run():
     while True:
         with cv:
             cv.wait_for(lambda: st["viewers"] > 0)
-        adb("wait-for-device")
-        adb("push", "/scrcpy-server", JAR)
-        adb("forward", "tcp:27183", "localabstract:scrcpy")
+        if not st.get("pushed"):
+            adb("wait-for-device")
+            adb("push", "/scrcpy-server", JAR)
+            adb("forward", "tcp:27183", "localabstract:scrcpy")
+            st["pushed"] = True
         p = subprocess.Popen(ADB + ["shell", f"CLASSPATH={JAR} app_process / com.genymobile.scrcpy.Server 5.0.1 {ARGS} camera_id={cfg['id']} capture_orientation={cfg['rot']} camera_torch={str(st['torch']).lower()}"])
         idle = None
         try:
@@ -123,6 +125,7 @@ def run():
                 if idle and time.time() - idle > IDLE:
                     break
         except Exception as e:
+            st["pushed"] = isinstance(e, EOFError)
             print("[cam]", repr(e), flush=True)
         finally:
             c, st["ctl"] = st["ctl"], None
@@ -131,7 +134,7 @@ def run():
             p.kill()
             adb("shell", "pkill", "-f", "com.genymobile")
             print("[cam] stopped", flush=True)
-        time.sleep(1)
+        time.sleep(0.2)
 
 
 class H(BaseHTTPRequestHandler):
@@ -153,7 +156,7 @@ class H(BaseHTTPRequestHandler):
             if m[1]:
                 cfg["rot" if m[1] == "/rot" else "id"] ^= 180 if m[1] == "/rot" else 1
                 json.dump(cfg, open(CFG, "w"))
-                adb("shell", "pkill", "-f", "com.genymobile")
+                threading.Thread(target=adb, args=("shell", "pkill", "-f", "com.genymobile"), daemon=True).start()
             self.head("application/json")
             self.wfile.write(json.dumps(cfg).encode())
         elif m := re.fullmatch(r"/torch/([01])", self.path):
