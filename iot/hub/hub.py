@@ -4,8 +4,7 @@ import os
 import sqlite3
 import threading
 import time
-from urllib.parse import urlencode
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 import cv2
 import paho.mqtt.client as mqtt
@@ -16,6 +15,7 @@ ROVER = os.environ.get("ROVER", "http://127.0.0.1:8080")
 SCANS = os.environ.get("SCANS", "/scans")
 DATA = os.environ.get("DATA", "/data")
 TS_KEY = os.environ.get("TS_KEY", "")
+TS_CHANNEL = os.environ.get("TS_CHANNEL", "")
 AWS = os.environ.get("AWS_ENDPOINT", "")
 THING = os.environ.get("THING", "rover")
 SHADOW = f"$aws/things/{THING}/shadow"
@@ -97,22 +97,27 @@ def sender():
     while True:
         sent = 0
         if aws and aws.is_connected():
-            for i, topic, body in db("select id, topic, body from outbox where dest='aws' order by id limit 50"):
-                info = aws.publish(topic, body, qos=1)
-                info.wait_for_publish(5)
+            batch = [(i, aws.publish(topic, body, qos=1)) for i, topic, body in db("select id, topic, body from outbox where dest='aws' order by id limit 100")]
+            done = []
+            for i, info in batch:
+                info.wait_for_publish(10)
                 if not info.is_published():
                     break
-                db("delete from outbox where id=?", (i,))
-                sent += 1
-        if TS_KEY and time.time() - ts_at > 16:
-            for i, body, t in db("select id, body, ts from outbox where dest='ts' order by id limit 1"):
-                ts_at = time.time()
-                q = body.decode() + "&" + urlencode({"api_key": TS_KEY, "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))})
-                try:
-                    if urlopen("https://api.thingspeak.com/update?" + q, timeout=8).read() != b"0":
-                        db("delete from outbox where id=?", (i,))
-                except OSError:
-                    pass
+                done.append((i,))
+            with lock:
+                db_.executemany("delete from outbox where id=?", done)
+                db_.commit()
+            sent = len(done)
+        rows = db("select id, body, ts from outbox where dest='ts' order by id limit 900") if TS_KEY and time.time() - ts_at > 16 else []
+        if rows:
+            ts_at = time.time()
+            ups = [dict(json.loads(b), created_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))) for _, b, t in rows]
+            req = Request(f"https://api.thingspeak.com/channels/{TS_CHANNEL}/bulk_update.json", json.dumps({"write_api_key": TS_KEY, "updates": ups}).encode(), {"Content-Type": "application/json"})
+            try:
+                if json.loads(urlopen(req, timeout=15).read()).get("success"):
+                    db(f"delete from outbox where dest='ts' and id <= {rows[-1][0]}")
+            except (OSError, ValueError):
+                pass
         db("delete from outbox where id in (select id from outbox where dest='aws' and topic='rover/telemetry' order by id desc limit -1 offset 5000)")
         time.sleep(0.2 if sent else 2)
 
@@ -166,7 +171,7 @@ def main():
             if now - ts_at >= 20:
                 ts_at = now
                 f = {"field1": rear, "field2": front, "field3": t["hdg"] if t["hdg"] is not None else "", "field4": int(p["state"] in ("drive", "capture", "turn", "selfcheck"))}
-                db("insert into outbox(dest, topic, body, ts) values('ts', '', ?, ?)", (urlencode(f).encode(), now))
+                db("insert into outbox(dest, topic, body, ts) values('ts', '', ?, ?)", (json.dumps(f).encode(), now))
             key = (p["id"], p["state"])
             if key != last:
                 last = key
