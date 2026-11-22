@@ -1,0 +1,30 @@
+digraph A {
+graph [rankdir=TB, fontname="Times-Roman", dpi=200, nodesep=0.3, ranksep=0.45, compound=true];
+node [shape=box, style="rounded,filled", fillcolor="#FFFFFF", fontname="Times-Roman", fontsize=11];
+edge [fontname="Times-Roman", fontsize=9, color="#333333"];
+subgraph cluster_p { label="Perception"; fontname="Times-Roman"; style=dashed;
+  us [label="2x HC-SR04\nfront · rear"]; imu [label="MPU6050\ngyro"]; a2 [label="Redmi A2\ncamera (USB)"]; mot [label="4 motors\n2x L298N"];
+}
+subgraph cluster_q { label="Edge: Arduino UNO Q"; fontname="Times-Roman"; style=dashed;
+  mcu [label="STM32 MCU\nfirmware stop and turn", fillcolor="#DCE6F2"];
+  rov [label="Rover app :8080\npatrol and search\nstate machines"];
+  cam [label="Camera bridge :8081\nscrcpy H.264 → JPEG"];
+  hub [label="Hub :8090\nchange detection\nYOLO-World detection", fillcolor="#DCE6F2"];
+  db [label="SQLite\ntelemetry · patrols\nverdicts · outbox", shape=cylinder];
+  mq [label="Mosquitto\nMQTT :1883", shape=ellipse, fillcolor="#F2F2F2"];
+  nr [label="Node-RED\ndashboard :1880"];
+  mcu -> rov [label="RPC", dir=both]; rov -> hub [label="HTTP", dir=both]; cam -> hub [label="frames"];
+  hub -> db [dir=both]; hub -> mq [dir=both]; mq -> nr [dir=both];
+}
+subgraph cluster_c { label="Cloud"; fontname="Times-Roman"; style=dashed;
+  iot [label="AWS IoT Core\nX.509 · MQTT/TLS 8883\nDevice Shadow", fillcolor="#DCE6F2"];
+  ddb [label="DynamoDB\nrover-verdicts\nrover-telemetry", shape=cylinder];
+  s3 [label="S3\npatrol images", shape=cylinder];
+  ts [label="ThingSpeak\nchannel 3591852"];
+  iot -> ddb [label="rules"]; iot -> s3 [label="rule"];
+}
+app [label="Android app\nvideo · live boxes\ntap-to-go"];
+us -> mcu; imu -> mcu; mcu -> mot; a2 -> cam;
+db -> iot [label="outbox QoS 1", ltail=cluster_q]; db -> ts [label="bulk HTTPS"];
+app -> rov [label="HTTP (Tailscale)", dir=both]; app -> hub [dir=both];
+}
