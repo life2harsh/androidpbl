@@ -23,6 +23,8 @@ auto = {"on": False, "seen": 0.0}
 want_cal = False
 patrol_st = {"state": "idle", "id": "", "cp": -1, "legs": 0, "err": ""}
 cmd = None
+acclog = None
+acc_res = {}
 RUNNING = ("selfcheck", "drive", "capture", "turn", "search", "approach", "abort")
 
 
@@ -145,6 +147,39 @@ def search(cls, col=""):
         fail("Search", e)
     finally:
         cmd = None
+
+
+def front_med():
+    v = []
+    for _ in range(10):
+        v.append(sense[1])
+        time.sleep(0.05)
+    v = sorted(x for x in v if x >= 0)
+    return v[len(v) // 2] if v else -1
+
+
+def acctest(t, back=False):
+    global cmd, acclog
+    patrol_st.update(state="drive", id="acctest", cp=-1, legs=0, err="")
+    acclog, f0, f1 = [], -1, -1
+    try:
+        time.sleep(1.5)
+        f0 = front_med()
+        if t > 0 and back:
+            cmd = ("lr", -CRUISE, -CRUISE)
+            time.sleep(t)
+            cmd = ("lr", 0, 0)
+        elif t > 0:
+            fwd(t, 300)
+        time.sleep(1.5)
+        f1 = front_med()
+        patrol_st["state"] = "done"
+    except RuntimeError as e:
+        fail("Test", e)
+    finally:
+        cmd = None
+        acc_res.update(f0=f0, f1=f1, log=acclog)
+        acclog = None
 
 
 def patrol(legs, stop_mm):
@@ -368,6 +403,11 @@ class H(BaseHTTPRequestHandler):
                 patrol_st["state"] = "search"
                 threading.Thread(target=search, args=(q["cls"][0], q.get("color", [""])[0]), daemon=True).start()
             self._json(json.dumps(patrol_st).encode())
+        elif u.path == "/acctest":
+            if patrol_st["state"] not in RUNNING:
+                patrol_st["state"] = "drive"
+                threading.Thread(target=acctest, args=(float(q.get("t", ["1.0"])[0]), "back" in q), daemon=True).start()
+            self._json(json.dumps(acc_res).encode())
         elif u.path == "/cal":
             global want_cal
             want_cal = True
@@ -411,6 +451,11 @@ def loop():
         au = auto["on"]
         l, r, ts = state["l"], state["r"], state["ts"]
         tm, tv, tu = test["m"], test["v"], test["until"]
+    if acclog is not None:
+        n = call("imu", 0)
+        w = [call(k, 0) for k in ("imuA", "imuB", "imuC")]
+        s16 = lambda x: x - 65536 if x & 0x8000 else x
+        acclog.append([now, n] + [s16(x) for v in w for x in ((v >> 16) & 0xFFFF, v & 0xFFFF)] + [sense[1], cmd[0] if cmd else ""])
     c = cmd
     Bridge.notify("auto", int(au and not c))
     if c and c[0] in ("hold", "turn"):

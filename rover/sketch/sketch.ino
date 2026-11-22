@@ -22,6 +22,8 @@ float ux, uy, uz, bx, by, bz, hdg = 0, r0 = 0, r1 = 0, rate = 0, iacc = 0, corr 
 bool imu = false;
 int bad = 0;
 int16_t pv[7];
+long acc[6];
+int accN = 0, lat[6];
 volatile bool wantCal = false;
 volatile unsigned long autoAt = 0, holdAt = 0;
 volatile int holdV = 0, holdStop = 0, turnV = 0;
@@ -129,6 +131,11 @@ int dirRpc() { return dir; }
 void stopRpc(int v) { holdStop = v; }
 void turnRpc(int v) { turnV = v; turnAt = millis() | 1; }
 int mode() { return was ? st : -1; }
+int imuSnap() { int n = accN; for (int i = 0; i < 6; i++) { lat[i] = n ? acc[i] / n : 0; acc[i] = 0; } accN = 0; return n; }
+int pack(int a, int b) { return (a << 16) | (b & 0xFFFF); }
+int imuA() { return pack(lat[0], lat[1]); }
+int imuB() { return pack(lat[2], lat[3]); }
+int imuC() { return pack(lat[4], lat[5]); }
 
 void pilot(unsigned long now) {
   bool blocked = mm(echoes[1]) < CLEAR;
@@ -180,6 +187,10 @@ void setup() {
   Bridge.provide("dir", dirRpc);
   Bridge.provide("stopmm", stopRpc);
   Bridge.provide("turn", turnRpc);
+  Bridge.provide("imu", imuSnap);
+  Bridge.provide("imuA", imuA);
+  Bridge.provide("imuB", imuB);
+  Bridge.provide("imuC", imuC);
   Wire.begin();
   Wire.setClock(100000);
   calibrate();
@@ -203,6 +214,8 @@ void loop() {
     if (!ok && ++bad > 20) imu = false;
     if (ok) {
       bad = 0;
+      for (int i = 0; i < 3; i++) { acc[i] += v[i]; acc[i + 3] += v[i + 4]; }
+      accN++;
       float r = ((v[4] - bx) * ux + (v[5] - by) * uy + (v[6] - bz) * uz) / 131.0f;
       float m = fmaxf(fminf(r, r0), fminf(fmaxf(r, r0), r1));
       r1 = r0;
