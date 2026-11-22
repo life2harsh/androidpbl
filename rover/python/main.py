@@ -162,7 +162,7 @@ def search(cls, col=""):
                     break
                 h0 = sense[2] / 10
                 sc = scan()
-                ok = [a for i, (a, m) in enumerate(sc) if abs(a) > 20 and all(not 0 <= x[1] < 500 for x in sc[max(i - 1, 0):i + 2])]
+                ok = [a for i, (a, m) in enumerate(sc) if abs(a) > 20 and all(not 0 <= x[1] < 350 for x in sc[max(i - 1, 0):i + 2])]
                 if not ok:
                     break
                 a = min(ok, key=lambda a: abs(a - rsign * (brg - h0)))
