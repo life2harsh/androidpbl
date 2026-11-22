@@ -70,6 +70,19 @@ def sight(d):
     return sense[2] / 10 + rsign * (d["cx"] - 0.5) * 66
 
 
+def reacquire(q, brg, side):
+    face(brg)
+    n = hub(q)
+    for turn in (25 * side, -50 * side):
+        if n.get("found"):
+            return n
+        spin(abs(turn), 1 if turn > 0 else -1)
+        n = hub(q)
+    if not n.get("found"):
+        face(brg)
+    return n
+
+
 def fwd(t, stop=450):
     global cmd
     Bridge.notify("stopmm", stop)
@@ -144,18 +157,12 @@ def search(cls, col=""):
                 time.sleep(0.3)
                 spin(50, side)
                 fwd(1.0)
-                face(brg)
-                n = hub(q)
-                for turn in (-20 * side, 40 * side):
-                    if n.get("found"):
-                        break
-                    spin(abs(turn), 1 if turn > 0 else -1)
-                    n = hub(q)
-                if not n.get("found"):
-                    face(brg)
+                n = reacquire(q, brg, -side)
             else:
                 fwd(1.2)
                 n = hub(q + "&near=%.3f" % 0.5)
+                if not n.get("found"):
+                    n = reacquire(q, brg, side)
             d = n if n.get("found") else dict(d, cx=0.5)
             if n.get("found"):
                 brg = sight(d)
