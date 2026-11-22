@@ -86,6 +86,8 @@ def look(cls, sid):
         cv2.putText(img, f"{cls} {best['score']:.2f}", (x, max(14, y - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
     os.makedirs(f"{SCANS}/{sid}", exist_ok=True)
     cv2.imwrite(f"{SCANS}/{sid}/last.jpg", img)
+    if best:
+        cv2.imwrite(f"{SCANS}/{sid}/hit.jpg", img)
     local.publish("rover/search", json.dumps(r))
     return r, img
 
@@ -103,7 +105,7 @@ class H(BaseHTTPRequestHandler):
             elif u.path == "/found":
                 r = json.loads(q["r"])
                 emit("rover/found", r)
-                emit(f"rover/img/{r['sid']}/found", open(f"{SCANS}/{r['sid']}/last.jpg", "rb").read())
+                emit(f"rover/img/{r['sid']}/found", open(f"{SCANS}/{r['sid']}/hit.jpg", "rb").read())
             else:
                 raise KeyError(u.path)
         except (OSError, KeyError, ValueError) as e:

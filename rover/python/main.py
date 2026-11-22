@@ -102,11 +102,11 @@ def search(cls):
             time.sleep(0.4)
             n = hub(q)
             d = n if n.get("found") else d
-        d = hub(q)
-        if d.get("found"):
-            d.update(hdg=sense[2] / 10, dist_mm=sense[1])
-            hub("/found?r=" + quote(json.dumps(d)))
-        patrol_st["state"] = "found" if d.get("found") else "lost"
+        n = hub(q)
+        d = n if n.get("found") else d
+        d.update(hdg=sense[2] / 10, dist_mm=sense[1])
+        hub("/found?r=" + quote(json.dumps(d)))
+        patrol_st["state"] = "found"
     except RuntimeError as e:
         patrol_st.update(state="failed", err=str(e))
     finally:
