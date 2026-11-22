@@ -212,8 +212,12 @@ class MainActivity : Activity(), SensorEventListener {
         ui.post { status.text = if (r == null) "rover offline" else "going to $colour ${overlay.target}".replace("_", " ") }
     }
 
-    private fun pickTarget() {
-        val classes = arrayOf("person", "backpack", "handbag", "suitcase", "bottle", "cup", "chair", "couch", "laptop", "cell_phone", "book", "sports_ball", "teddy_bear", "dog", "cat")
+    private fun pickTarget() = thread {
+        val classes = rover.get("/classes", 8090)?.let { runCatching { org.json.JSONArray(it).let { a -> Array(a.length()) { a.getString(it) } } }.getOrNull() } ?: arrayOf("person")
+        runOnUiThread { pickTarget(classes) }
+    }
+
+    private fun pickTarget(classes: Array<String>) {
         val colours = arrayOf("any", "red", "orange", "yellow", "green", "blue", "purple", "white", "grey", "black")
         AlertDialog.Builder(this).setTitle("Search for").setItems(classes.map { it.replace("_", " ") }.toTypedArray()) { _, i ->
             AlertDialog.Builder(this).setTitle("Colour").setItems(colours) { _, j ->

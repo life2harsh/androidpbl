@@ -71,7 +71,8 @@ def on_local(c, u, m):
         pass
 
 
-detector = Detector(f"{DATA}/models/nanodet.onnx")
+live_det = Detector(f"{DATA}/models/world_320.onnx", f"{DATA}/models/classes.txt", 3)
+detector = Detector(f"{DATA}/models/world_416.onnx", f"{DATA}/models/classes.txt")
 live = {"until": 0.0, "frame": None, "out": b'{"dets": []}'}
 HUES = ((10, "red"), (22, "orange"), (35, "yellow"), (85, "green"), (130, "blue"), (160, "purple"), (180, "red"))
 
@@ -115,7 +116,7 @@ def detector_loop():
             continue
         h, w = f.shape[:2]
         dets = [dict(d, colour=colour(f, d["box"]), box=[round(d["box"][0] / w, 3), round(d["box"][1] / h, 3), round(d["box"][2] / w, 3), round(d["box"][3] / h, 3)])
-                for d in detector(f, 0.45)]
+                for d in live_det(f, 0.3)]
         live["out"] = json.dumps({"ts": time.time(), "dets": dets}).encode()
 
 
@@ -152,7 +153,9 @@ class H(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(live["out"])
                 return
-            if u.path == "/look":
+            if u.path == "/classes":
+                r = detector.names
+            elif u.path == "/look":
                 r, _ = look(q.get("cls", "person"), q.get("sid", "s"), q.get("color", ""))
             elif u.path == "/found":
                 r = json.loads(q["r"])

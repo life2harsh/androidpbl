@@ -24,7 +24,7 @@
 - **Firmware owns time-critical control.** Stopping at a distance and turning to an angle run in the MCU loop. When this lived in Python, RPC and loop latency caused 16 cm overshoot on stops and 116° on an 85° turn.
 - **Python owns sequencing.** Patrol and search are state machines that send setpoints (`hold`, `turn`, `stopmm`) and wait on telemetry.
 - **The hub owns data.** It polls the rover at 1 Hz, writes everything to SQLite first, and publishes from there. If WiFi or the cloud drops, rows wait in the `outbox` table and are sent later (AWS QoS 1 in batches of 100, ThingSpeak bulk updates every 16 s).
-- **Detection runs at the edge.** NanoDet-Plus (416 px) takes about 0.18 s per frame on the board, about 5 fps live. No video leaves the device; only verdict images go to S3.
+- **Detection runs at the edge.** YOLO-World (open vocabulary, 40 words) runs on the board at about 0.6 s per frame live, 1 s per search look. No video leaves the device; only verdict images go to S3.
 
 ## Patrol state machine
 

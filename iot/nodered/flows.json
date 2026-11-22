@@ -594,8 +594,18 @@
     "type": "str"
    },
    {
-    "label": "backpack",
-    "value": "backpack",
+    "label": "shoe",
+    "value": "shoe",
+    "type": "str"
+   },
+   {
+    "label": "sandal",
+    "value": "sandal",
+    "type": "str"
+   },
+   {
+    "label": "slipper",
+    "value": "slipper",
     "type": "str"
    },
    {
@@ -604,13 +614,68 @@
     "type": "str"
    },
    {
-    "label": "cup",
-    "value": "cup",
+    "label": "bag",
+    "value": "bag",
+    "type": "str"
+   },
+   {
+    "label": "backpack",
+    "value": "backpack",
     "type": "str"
    },
    {
     "label": "chair",
     "value": "chair",
+    "type": "str"
+   },
+   {
+    "label": "phone",
+    "value": "phone",
+    "type": "str"
+   },
+   {
+    "label": "laptop",
+    "value": "laptop",
+    "type": "str"
+   },
+   {
+    "label": "cup",
+    "value": "cup",
+    "type": "str"
+   },
+   {
+    "label": "box",
+    "value": "box",
+    "type": "str"
+   },
+   {
+    "label": "book",
+    "value": "book",
+    "type": "str"
+   },
+   {
+    "label": "bucket",
+    "value": "bucket",
+    "type": "str"
+   },
+   {
+    "label": "bed",
+    "value": "bed",
+    "type": "str"
+   },
+   {
+    "label": "pillow",
+    "value": "pillow",
+    "type": "str"
+   },
+   {
+    "label": "umbrella",
+    "value": "umbrella",
+    "type": "str"
+   },
+   {
+    "label": "helmet",
+    "value": "helmet",
     "type": "str"
    },
    {
@@ -624,8 +689,103 @@
     "type": "str"
    },
    {
-    "label": "suitcase",
-    "value": "suitcase",
+    "label": "keys",
+    "value": "keys",
+    "type": "str"
+   },
+   {
+    "label": "wallet",
+    "value": "wallet",
+    "type": "str"
+   },
+   {
+    "label": "glasses",
+    "value": "glasses",
+    "type": "str"
+   },
+   {
+    "label": "remote",
+    "value": "remote",
+    "type": "str"
+   },
+   {
+    "label": "toy",
+    "value": "toy",
+    "type": "str"
+   },
+   {
+    "label": "ball",
+    "value": "ball",
+    "type": "str"
+   },
+   {
+    "label": "table",
+    "value": "table",
+    "type": "str"
+   },
+   {
+    "label": "door",
+    "value": "door",
+    "type": "str"
+   },
+   {
+    "label": "plant",
+    "value": "plant",
+    "type": "str"
+   },
+   {
+    "label": "fire extinguisher",
+    "value": "fire_extinguisher",
+    "type": "str"
+   },
+   {
+    "label": "jacket",
+    "value": "jacket",
+    "type": "str"
+   },
+   {
+    "label": "towel",
+    "value": "towel",
+    "type": "str"
+   },
+   {
+    "label": "headphones",
+    "value": "headphones",
+    "type": "str"
+   },
+   {
+    "label": "charger",
+    "value": "charger",
+    "type": "str"
+   },
+   {
+    "label": "clock",
+    "value": "clock",
+    "type": "str"
+   },
+   {
+    "label": "tv",
+    "value": "tv",
+    "type": "str"
+   },
+   {
+    "label": "toothbrush",
+    "value": "toothbrush",
+    "type": "str"
+   },
+   {
+    "label": "knife",
+    "value": "knife",
+    "type": "str"
+   },
+   {
+    "label": "scissors",
+    "value": "scissors",
+    "type": "str"
+   },
+   {
+    "label": "lamp",
+    "value": "lamp",
     "type": "str"
    }
   ],
