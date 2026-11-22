@@ -234,7 +234,7 @@ class MainActivity : Activity(), SensorEventListener {
             "search" -> "Searching for $g…" to "#1F6FEB"
             "approach" -> "Driving to $g…" to "#1F6FEB"
             "found" -> "Found $g ✓" to "#2EA043"
-            "blocked" -> "Path blocked near $g" to "#9A6700"
+            "blocked" -> "Cannot reach $g · something in the way" to "#9A6700"
             "failed" -> "Failed: ${j.optString("err")}" to "#DA3633"
             "abort" -> "Stopping…" to "#9A6700"
             "selfcheck" -> "Patrol: self-check…" to "#1F6FEB"

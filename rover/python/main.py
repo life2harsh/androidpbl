@@ -55,6 +55,16 @@ def spin(deg, d=1):
     time.sleep(0.45)
 
 
+def fwd(t, stop=450):
+    global cmd
+    Bridge.notify("stopmm", stop)
+    cmd = ("hold", CRUISE)
+    t0 = time.time()
+    wait(lambda: 0 <= sense[1] <= stop or time.time() - t0 > t, t + 2)
+    cmd = ("lr", 0, 0)
+    time.sleep(0.4)
+
+
 def warm(pid):
     try:
         with urlopen(CAM + "/v", timeout=5) as r:
@@ -100,25 +110,36 @@ def search(cls, col=""):
         else:
             raise RuntimeError(("no %s %s found" % (col, cls)).replace("  ", " "))
         patrol_st["state"] = "approach"
-        for _ in range(6):
+        ways = []
+        for _ in range(8):
             err = (d["cx"] - 0.5) * 66
+            side = -1 if err < 0 else 1
             if abs(err) > 8:
-                spin(abs(err), 1 if err > 0 else -1)
-            if 0 <= sense[1] <= 450 or d["area"] > 0.3:
+                spin(abs(err), side)
+            if d["area"] > 0.3:
                 break
-            Bridge.notify("stopmm", 450)
-            cmd = ("hold", CRUISE)
-            t = time.time()
-            wait(lambda: 0 <= sense[1] <= 450 or time.time() - t > 1.2, 3)
-            cmd = ("lr", 0, 0)
-            time.sleep(0.4)
-            n = hub(q + "&near=%.3f" % 0.5)
+            if 0 <= sense[1] <= 450:
+                if d["area"] >= 0.05 or len(ways) == 2:
+                    break
+                side = -ways[0] if ways else side
+                ways.append(side)
+                cmd = ("lr", -CRUISE, -CRUISE)
+                time.sleep(0.6)
+                cmd = ("lr", 0, 0)
+                time.sleep(0.3)
+                spin(50, side)
+                fwd(1.0)
+                spin(50, -side)
+                n = hub(q)
+            else:
+                fwd(1.2)
+                n = hub(q + "&near=%.3f" % 0.5)
             d = n if n.get("found") else d
         n = hub(q + "&near=%.3f" % 0.5)
         d = n if n.get("found") else d
         d.update(hdg=sense[2] / 10, dist_mm=sense[1], blocked=0 <= sense[1] <= 450 and d["area"] < 0.05)
         hub("/found?r=" + quote(json.dumps(d)))
-        cam("/say/" + quote(("Path blocked near %s %s" if d["blocked"] else "Found %s %s") % (d.get("seen_colour", ""), cls)))
+        cam("/say/" + quote(("Cannot reach %s %s, something in the way" if d["blocked"] else "Found %s %s") % (d.get("seen_colour", ""), cls)))
         patrol_st["state"] = "blocked" if d["blocked"] else "found"
     except RuntimeError as e:
         fail("Search", e)
