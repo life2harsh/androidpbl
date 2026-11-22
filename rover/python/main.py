@@ -52,7 +52,7 @@ def spin(deg, d=1):
     global cmd, rsign
     h0 = sense[2]
     cmd = ("turn", int(d * deg * 10))
-    wait(lambda: abs(sense[2] - h0) >= (deg - 15) * 10, 4)
+    wait(lambda: abs(sense[2] - h0) >= max(deg - 15, deg / 2) * 10, 4)
     time.sleep(0.5)
     cmd = ("lr", 0, 0)
     time.sleep(0.45)
@@ -73,10 +73,10 @@ def sight(d):
 def reacquire(q, brg, side):
     face(brg)
     n = hub(q)
-    for turn in (25 * side, -50 * side):
+    for _ in range(4):
         if n.get("found"):
             return n
-        spin(abs(turn), 1 if turn > 0 else -1)
+        spin(15, side)
         n = hub(q)
     if not n.get("found"):
         face(brg)
