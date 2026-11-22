@@ -48,7 +48,7 @@ def wait(cond, limit):
 def spin(deg, d=1):
     global cmd
     h0 = sense[2]
-    cmd = ("turn", d * deg * 10)
+    cmd = ("turn", int(d * deg * 10))
     wait(lambda: abs(sense[2] - h0) >= (deg - 15) * 10, 4)
     time.sleep(0.5)
     cmd = ("lr", 0, 0)
