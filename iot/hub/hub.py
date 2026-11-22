@@ -4,14 +4,20 @@ import os
 import sqlite3
 import threading
 import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
+
+import numpy as np
 
 import cv2
 import paho.mqtt.client as mqtt
 
+from detect import Detector
 from vision import compare, sharpest
 
 ROVER = os.environ.get("ROVER", "http://127.0.0.1:8080")
+CAM = os.environ.get("CAM", "http://127.0.0.1:8081")
 SCANS = os.environ.get("SCANS", "/scans")
 DATA = os.environ.get("DATA", "/data")
 TS_KEY = os.environ.get("TS_KEY", "")
@@ -53,9 +59,60 @@ def start_patrol(legs):
 
 def on_local(c, u, m):
     try:
-        start_patrol(json.loads(m.payload).get("patrol", 0) or 0) if m.topic == "rover/cmd" else None
+        cmd = json.loads(m.payload)
     except ValueError:
+        return
+    try:
+        if cmd.get("patrol"):
+            start_patrol(cmd["patrol"])
+        elif cmd.get("search"):
+            get(f"/search?cls={cmd['search']}")
+    except OSError:
         pass
+
+
+detector = Detector(f"{DATA}/models/nanodet.onnx")
+
+
+def look(cls, sid):
+    img = cv2.imdecode(np.frombuffer(urlopen(CAM + "/snap.jpg", timeout=10).read(), np.uint8), cv2.IMREAD_COLOR)
+    hits = [d for d in detector(img) if d["cls"] == cls]
+    best = max(hits, key=lambda d: d["score"]) if hits else None
+    r = {"sid": sid, "cls": cls, "found": bool(best), "ts": time.time()}
+    if best:
+        x, y, w, h = best["box"]
+        r.update(score=best["score"], box=best["box"], cx=(x + w / 2) / img.shape[1], area=w * h / (img.shape[0] * img.shape[1]))
+        cv2.rectangle(img, (x, y), (x + w, y + h), (0, 0, 255), 2)
+        cv2.putText(img, f"{cls} {best['score']:.2f}", (x, max(14, y - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+    os.makedirs(f"{SCANS}/{sid}", exist_ok=True)
+    cv2.imwrite(f"{SCANS}/{sid}/last.jpg", img)
+    local.publish("rover/search", json.dumps(r))
+    return r, img
+
+
+class H(BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        u = urlparse(self.path)
+        q = {k: v[0] for k, v in parse_qs(u.query).items()}
+        try:
+            if u.path == "/look":
+                r, _ = look(q.get("cls", "person"), q.get("sid", "s"))
+            elif u.path == "/found":
+                r = json.loads(q["r"])
+                emit("rover/found", r)
+                emit(f"rover/img/{r['sid']}/found", open(f"{SCANS}/{r['sid']}/last.jpg", "rb").read())
+            else:
+                raise KeyError(u.path)
+        except (OSError, KeyError, ValueError) as e:
+            self.send_error(500, repr(e))
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(r).encode())
 
 
 local = mqtt.Client(API, "hub")
@@ -148,6 +205,7 @@ def analyse(p):
 
 def main():
     threading.Thread(target=sender, daemon=True).start()
+    threading.Thread(target=ThreadingHTTPServer(("0.0.0.0", 8090), H).serve_forever, daemon=True).start()
     last, aws_at, ts_at, online = None, 0, 0, None
     while True:
         now = time.time()

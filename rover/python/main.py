@@ -1,6 +1,7 @@
 import json
 import threading
 import time
+from urllib.parse import quote
 from urllib.request import urlopen
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
@@ -10,6 +11,7 @@ from arduino.app_utils import App, Bridge
 PORT = 8080
 STALE = 0.4
 CAM = "http://172.17.0.1:8081"
+HUB = "http://172.17.0.1:8090"
 CRUISE, SPIN = 170, 150
 
 state = {"l": 0, "r": 0, "ts": 0.0}
@@ -21,7 +23,7 @@ auto = {"on": False, "seen": 0.0}
 want_cal = False
 patrol_st = {"state": "idle", "id": "", "cp": -1, "legs": 0, "err": ""}
 cmd = None
-RUNNING = ("selfcheck", "drive", "capture", "turn")
+RUNNING = ("selfcheck", "drive", "capture", "turn", "search", "approach")
 
 
 def cam(path):
@@ -60,6 +62,55 @@ def warm(pid):
                 r.read(4096)
     except OSError:
         pass
+
+
+def hub(path):
+    try:
+        return json.loads(urlopen(HUB + path, timeout=15).read())
+    except (OSError, ValueError):
+        return {}
+
+
+def search(cls):
+    global cmd
+    sid = time.strftime("s%Y%m%d-%H%M%S")
+    patrol_st.update(state="search", id=sid, cp=-1, legs=0, err="")
+    threading.Thread(target=warm, args=(sid,), daemon=True).start()
+    q = "/look?cls=%s&sid=%s" % (quote(cls), sid)
+    try:
+        if sense[2] <= -99999:
+            raise RuntimeError("no gyro")
+        for _ in range(13):
+            d = hub(q)
+            if d.get("found"):
+                break
+            spin(30)
+        else:
+            raise RuntimeError("no %s found" % cls)
+        patrol_st["state"] = "approach"
+        for _ in range(6):
+            err = (d["cx"] - 0.5) * 66
+            if abs(err) > 8:
+                spin(abs(err), 1 if err > 0 else -1)
+            if 0 <= sense[1] <= 450 or d["area"] > 0.3:
+                break
+            Bridge.notify("stopmm", 450)
+            cmd = ("hold", CRUISE)
+            t = time.time()
+            wait(lambda: 0 <= sense[1] <= 450 or time.time() - t > 1.2, 3)
+            cmd = ("lr", 0, 0)
+            time.sleep(0.4)
+            n = hub(q)
+            d = n if n.get("found") else d
+        d = hub(q)
+        if d.get("found"):
+            d.update(hdg=sense[2] / 10, dist_mm=sense[1])
+            hub("/found?r=" + quote(json.dumps(d)))
+        patrol_st["state"] = "found" if d.get("found") else "lost"
+    except RuntimeError as e:
+        patrol_st.update(state="failed", err=str(e))
+    finally:
+        cmd = None
 
 
 def patrol(legs, stop_mm):
@@ -232,6 +283,13 @@ class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def _json(self, b):
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
+
     def _nc(self, code):
         self.send_response(code)
         self.send_header("Content-Length", "0")
@@ -270,12 +328,12 @@ class H(BaseHTTPRequestHandler):
             elif "legs" in q and patrol_st["state"] not in RUNNING:
                 patrol_st["state"] = "selfcheck"
                 threading.Thread(target=patrol, args=(clamp(q["legs"][0]), clamp(q.get("stop", ["350"])[0])), daemon=True).start()
-            b = json.dumps(patrol_st).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(b)))
-            self.end_headers()
-            self.wfile.write(b)
+            self._json(json.dumps(patrol_st).encode())
+        elif u.path == "/search":
+            if "cls" in q and patrol_st["state"] not in RUNNING:
+                patrol_st["state"] = "search"
+                threading.Thread(target=search, args=(q["cls"][0],), daemon=True).start()
+            self._json(json.dumps(patrol_st).encode())
         elif u.path == "/cal":
             global want_cal
             want_cal = True

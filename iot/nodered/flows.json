@@ -1,32 +1,765 @@
 [
-  {"id": "tab", "type": "tab", "label": "Rover"},
-  {"id": "broker", "type": "mqtt-broker", "name": "local", "broker": "127.0.0.1", "port": "1883", "clientid": "nodered", "autoConnect": true, "usetls": false, "protocolVersion": "4", "keepalive": "60", "cleansession": true},
-  {"id": "base", "type": "ui-base", "name": "Rover", "path": "/dashboard", "includeClientData": true, "acceptsClientConfig": ["ui-control", "ui-notification"], "showPathInSidebar": false, "navigationStyle": "none", "titleBarStyle": "default"},
-  {"id": "theme", "type": "ui-theme", "name": "Dark", "colors": {"surface": "#0d0f12", "primary": "#2f81f7", "bgPage": "#0d0f12", "groupBg": "#161b22", "groupOutline": "#30363d"}, "sizes": {"pagePadding": "12px", "groupGap": "12px", "groupBorderRadius": "8px", "widgetGap": "12px"}},
-  {"id": "page", "type": "ui-page", "name": "Patrol", "ui": "base", "path": "/", "icon": "robot", "layout": "grid", "theme": "theme", "order": 1, "className": "", "visible": "true", "disabled": "false"},
-  {"id": "gLive", "type": "ui-group", "name": "Live", "page": "page", "width": "6", "height": "1", "order": 1, "showTitle": true, "className": "", "visible": "true", "disabled": "false"},
-  {"id": "gPatrol", "type": "ui-group", "name": "Patrol", "page": "page", "width": "6", "height": "1", "order": 2, "showTitle": true, "className": "", "visible": "true", "disabled": "false"},
-  {"id": "gHist", "type": "ui-group", "name": "Distance history", "page": "page", "width": "12", "height": "1", "order": 3, "showTitle": true, "className": "", "visible": "true", "disabled": "false"},
-
-  {"id": "inTel", "type": "mqtt in", "z": "tab", "name": "telemetry", "topic": "rover/telemetry", "qos": "0", "datatype": "json", "broker": "broker", "nl": false, "rap": true, "rh": 0, "inputs": 0, "x": 120, "y": 80, "wires": [["split"]]},
-  {"id": "split", "type": "function", "z": "tab", "name": "split", "func": "const p = msg.payload;\nconst cm = v => v >= 0 ? Math.round(v / 10) : null;\nreturn [\n  {payload: cm(p.front)},\n  {payload: cm(p.rear)},\n  {payload: p.hdg === null ? 'gyro offline' : p.hdg.toFixed(1) + '°'},\n  {payload: p.patrol},\n  [{topic: 'front', payload: cm(p.front)}, {topic: 'rear', payload: cm(p.rear)}].filter(m => m.payload !== null)\n];", "outputs": 5, "x": 300, "y": 80, "wires": [["gFront"], ["gRear"], ["tHdg"], ["tState"], ["chart"]]},
-  {"id": "gFront", "type": "ui-gauge", "z": "tab", "name": "front", "group": "gLive", "order": 1, "width": 3, "height": 3, "gtype": "gauge-half", "gstyle": "needle", "title": "Front", "units": "cm", "icon": "", "prefix": "", "suffix": "", "segments": [{"from": "0", "color": "#f85149"}, {"from": "35", "color": "#d29922"}, {"from": "70", "color": "#2ea043"}], "min": 0, "max": 200, "sizeThickness": 16, "sizeGap": 4, "sizeKeyThickness": 8, "styleRounded": true, "styleGlow": false, "className": "", "x": 520, "y": 40, "wires": []},
-  {"id": "gRear", "type": "ui-gauge", "z": "tab", "name": "rear", "group": "gLive", "order": 2, "width": 3, "height": 3, "gtype": "gauge-half", "gstyle": "needle", "title": "Rear", "units": "cm", "icon": "", "prefix": "", "suffix": "", "segments": [{"from": "0", "color": "#f85149"}, {"from": "15", "color": "#d29922"}, {"from": "50", "color": "#2ea043"}], "min": 0, "max": 200, "sizeThickness": 16, "sizeGap": 4, "sizeKeyThickness": 8, "styleRounded": true, "styleGlow": false, "className": "", "x": 520, "y": 80, "wires": []},
-  {"id": "tHdg", "type": "ui-text", "z": "tab", "name": "heading", "group": "gLive", "order": 3, "width": 3, "height": 1, "label": "Heading", "format": "{{msg.payload}}", "layout": "row-spread", "style": false, "className": "", "x": 520, "y": 120, "wires": []},
-  {"id": "tState", "type": "ui-text", "z": "tab", "name": "state", "group": "gLive", "order": 4, "width": 3, "height": 1, "label": "Patrol state", "format": "{{msg.payload}}", "layout": "row-spread", "style": false, "className": "", "x": 520, "y": 160, "wires": []},
-  {"id": "chart", "type": "ui-chart", "z": "tab", "name": "distance", "group": "gHist", "order": 1, "width": 12, "height": 5, "label": "", "chartType": "line", "category": "topic", "categoryType": "msg", "xAxisLabel": "", "xAxisProperty": "", "xAxisPropertyType": "timestamp", "xAxisType": "time", "xAxisFormat": "", "xAxisFormatType": "auto", "yAxisLabel": "cm", "yAxisProperty": "payload", "yAxisPropertyType": "msg", "ymin": "0", "ymax": "300", "action": "append", "stackSeries": false, "pointShape": "false", "pointRadius": 0, "showLegend": true, "removeOlder": "5", "removeOlderUnit": "60", "removeOlderPoints": "", "colors": ["#2f81f7", "#d29922", "#2ea043", "#f85149", "#a371f7", "#3fb950", "#db6d28", "#8b949e", "#e3b341"], "textColor": ["#8b949e"], "textColorDefault": false, "gridColor": ["#30363d"], "gridColorDefault": false, "className": "", "interpolation": "linear", "x": 520, "y": 200, "wires": [[]]},
-
-  {"id": "inStatus", "type": "mqtt in", "z": "tab", "name": "status", "topic": "rover/status", "qos": "0", "datatype": "json", "broker": "broker", "nl": false, "rap": true, "rh": 0, "inputs": 0, "x": 120, "y": 260, "wires": [["fStatus"]]},
-  {"id": "fStatus", "type": "function", "z": "tab", "name": "status", "func": "msg.payload = msg.payload.online ? 'online' : 'OFFLINE';\nreturn msg;", "outputs": 1, "x": 300, "y": 260, "wires": [["tOnline"]]},
-  {"id": "tOnline", "type": "ui-text", "z": "tab", "name": "online", "group": "gLive", "order": 5, "width": 3, "height": 1, "label": "Rover", "format": "{{msg.payload}}", "layout": "row-spread", "style": false, "className": "", "x": 520, "y": 260, "wires": []},
-
-  {"id": "bLap", "type": "ui-button", "z": "tab", "name": "lap", "group": "gPatrol", "order": 1, "width": 3, "height": 1, "label": "Start 4-leg patrol", "tooltip": "", "color": "", "bgcolor": "", "className": "", "icon": "play", "iconPosition": "left", "payload": "{\"patrol\":4}", "payloadType": "json", "topic": "rover/cmd", "topicType": "str", "buttonColor": "", "textColor": "", "iconColor": "", "enableClick": true, "x": 120, "y": 340, "wires": [["outCmd"]]},
-  {"id": "bLeg", "type": "ui-button", "z": "tab", "name": "leg", "group": "gPatrol", "order": 2, "width": 3, "height": 1, "label": "Single leg", "tooltip": "", "color": "", "bgcolor": "", "className": "", "icon": "debug-step-over", "iconPosition": "left", "payload": "{\"patrol\":1}", "payloadType": "json", "topic": "rover/cmd", "topicType": "str", "buttonColor": "", "textColor": "", "iconColor": "", "enableClick": true, "x": 120, "y": 380, "wires": [["outCmd"]]},
-  {"id": "outCmd", "type": "mqtt out", "z": "tab", "name": "cmd", "topic": "rover/cmd", "qos": "1", "retain": "false", "broker": "broker", "x": 320, "y": 360, "wires": []},
-
-  {"id": "inVer", "type": "mqtt in", "z": "tab", "name": "verdicts", "topic": "rover/verdict", "qos": "1", "datatype": "json", "broker": "broker", "nl": false, "rap": true, "rh": 0, "inputs": 0, "x": 120, "y": 440, "wires": [["fVer", "fImg"]]},
-  {"id": "fVer", "type": "function", "z": "tab", "name": "history", "func": "const v = msg.payload;\nconst rows = context.get('rows') || [];\nrows.unshift({time: new Date(v.ts * 1000).toLocaleTimeString(), patrol: v.pid, cp: v.cp, verdict: v.verdict, regions: v.regions.length, changed: v.changed === null ? '' : v.changed + '%', ssim: v.ssim === null ? '' : v.ssim});\ncontext.set('rows', rows.slice(0, 40));\nreturn {payload: rows.slice(0, 40)};", "outputs": 1, "x": 300, "y": 440, "wires": [["table"]]},
-  {"id": "table", "type": "ui-table", "z": "tab", "name": "verdicts", "group": "gPatrol", "order": 4, "width": 6, "height": 6, "maxrows": 8, "passthru": false, "autocols": true, "showSearch": false, "selectionType": "none", "columns": [], "mobileBreakpoint": "sm", "mobileBreakpointType": "defaults", "action": "replace", "className": "", "x": 500, "y": 440, "wires": []},
-  {"id": "fImg", "type": "function", "z": "tab", "name": "image", "func": "const v = msg.payload;\nconst f = v.verdict === 'BASELINE' ? 'f_00001.jpg' : 'diff.jpg';\nmsg.payload = {src: `/scans/${v.pid}-cp${v.cp}/${f}?t=${Date.now()}`, caption: `${v.pid} · checkpoint ${v.cp} · ${v.verdict}`, bad: v.verdict === 'REVIEW'};\nreturn msg;", "outputs": 1, "x": 300, "y": 480, "wires": [["img"]]},
-  {"id": "img", "type": "ui-template", "z": "tab", "group": "gPatrol", "page": "", "ui": "", "name": "latest", "order": 3, "width": 6, "height": 4, "head": "", "format": "<template>\n  <div v-if=\"msg && msg.payload\">\n    <img :src=\"msg.payload.src\" style=\"width:100%;border-radius:6px\">\n    <div :style=\"{color: msg.payload.bad ? '#f85149' : '#2ea043', marginTop: '6px'}\">{{ msg.payload.caption }}</div>\n  </div>\n  <div v-else style=\"color:#8b949e\">No checkpoint yet</div>\n</template>", "storeOutMessages": true, "passthru": false, "resendOnRefresh": true, "templateScope": "local", "className": "", "x": 500, "y": 480, "wires": [[]]}
+ {
+  "id": "tab",
+  "type": "tab",
+  "label": "Rover"
+ },
+ {
+  "id": "broker",
+  "type": "mqtt-broker",
+  "name": "local",
+  "broker": "127.0.0.1",
+  "port": "1883",
+  "clientid": "nodered",
+  "autoConnect": true,
+  "usetls": false,
+  "protocolVersion": "4",
+  "keepalive": "60",
+  "cleansession": true
+ },
+ {
+  "id": "base",
+  "type": "ui-base",
+  "name": "Rover",
+  "path": "/dashboard",
+  "includeClientData": true,
+  "acceptsClientConfig": [
+   "ui-control",
+   "ui-notification"
+  ],
+  "showPathInSidebar": false,
+  "navigationStyle": "none",
+  "titleBarStyle": "default"
+ },
+ {
+  "id": "theme",
+  "type": "ui-theme",
+  "name": "Dark",
+  "colors": {
+   "surface": "#0d0f12",
+   "primary": "#2f81f7",
+   "bgPage": "#0d0f12",
+   "groupBg": "#161b22",
+   "groupOutline": "#30363d"
+  },
+  "sizes": {
+   "pagePadding": "12px",
+   "groupGap": "12px",
+   "groupBorderRadius": "8px",
+   "widgetGap": "12px"
+  }
+ },
+ {
+  "id": "page",
+  "type": "ui-page",
+  "name": "Patrol",
+  "ui": "base",
+  "path": "/",
+  "icon": "robot",
+  "layout": "grid",
+  "theme": "theme",
+  "order": 1,
+  "className": "",
+  "visible": "true",
+  "disabled": "false"
+ },
+ {
+  "id": "gLive",
+  "type": "ui-group",
+  "name": "Live",
+  "page": "page",
+  "width": "6",
+  "height": "1",
+  "order": 1,
+  "showTitle": true,
+  "className": "",
+  "visible": "true",
+  "disabled": "false"
+ },
+ {
+  "id": "gPatrol",
+  "type": "ui-group",
+  "name": "Patrol",
+  "page": "page",
+  "width": "6",
+  "height": "1",
+  "order": 2,
+  "showTitle": true,
+  "className": "",
+  "visible": "true",
+  "disabled": "false"
+ },
+ {
+  "id": "gHist",
+  "type": "ui-group",
+  "name": "Distance history",
+  "page": "page",
+  "width": "12",
+  "height": "1",
+  "order": 3,
+  "showTitle": true,
+  "className": "",
+  "visible": "true",
+  "disabled": "false"
+ },
+ {
+  "id": "inTel",
+  "type": "mqtt in",
+  "z": "tab",
+  "name": "telemetry",
+  "topic": "rover/telemetry",
+  "qos": "0",
+  "datatype": "json",
+  "broker": "broker",
+  "nl": false,
+  "rap": true,
+  "rh": 0,
+  "inputs": 0,
+  "x": 120,
+  "y": 80,
+  "wires": [
+   [
+    "split"
+   ]
+  ]
+ },
+ {
+  "id": "split",
+  "type": "function",
+  "z": "tab",
+  "name": "split",
+  "func": "const p = msg.payload;\nconst cm = v => v >= 0 ? Math.round(v / 10) : null;\nreturn [\n  {payload: cm(p.front)},\n  {payload: cm(p.rear)},\n  {payload: p.hdg === null ? 'gyro offline' : p.hdg.toFixed(1) + '\u00b0'},\n  {payload: p.patrol},\n  [{topic: 'front', payload: cm(p.front)}, {topic: 'rear', payload: cm(p.rear)}].filter(m => m.payload !== null)\n];",
+  "outputs": 5,
+  "x": 300,
+  "y": 80,
+  "wires": [
+   [
+    "gFront"
+   ],
+   [
+    "gRear"
+   ],
+   [
+    "tHdg"
+   ],
+   [
+    "tState"
+   ],
+   [
+    "chart"
+   ]
+  ]
+ },
+ {
+  "id": "gFront",
+  "type": "ui-gauge",
+  "z": "tab",
+  "name": "front",
+  "group": "gLive",
+  "order": 1,
+  "width": 3,
+  "height": 3,
+  "gtype": "gauge-half",
+  "gstyle": "needle",
+  "title": "Front",
+  "units": "cm",
+  "icon": "",
+  "prefix": "",
+  "suffix": "",
+  "segments": [
+   {
+    "from": "0",
+    "color": "#f85149"
+   },
+   {
+    "from": "35",
+    "color": "#d29922"
+   },
+   {
+    "from": "70",
+    "color": "#2ea043"
+   }
+  ],
+  "min": 0,
+  "max": 200,
+  "sizeThickness": 16,
+  "sizeGap": 4,
+  "sizeKeyThickness": 8,
+  "styleRounded": true,
+  "styleGlow": false,
+  "className": "",
+  "x": 520,
+  "y": 40,
+  "wires": []
+ },
+ {
+  "id": "gRear",
+  "type": "ui-gauge",
+  "z": "tab",
+  "name": "rear",
+  "group": "gLive",
+  "order": 2,
+  "width": 3,
+  "height": 3,
+  "gtype": "gauge-half",
+  "gstyle": "needle",
+  "title": "Rear",
+  "units": "cm",
+  "icon": "",
+  "prefix": "",
+  "suffix": "",
+  "segments": [
+   {
+    "from": "0",
+    "color": "#f85149"
+   },
+   {
+    "from": "15",
+    "color": "#d29922"
+   },
+   {
+    "from": "50",
+    "color": "#2ea043"
+   }
+  ],
+  "min": 0,
+  "max": 200,
+  "sizeThickness": 16,
+  "sizeGap": 4,
+  "sizeKeyThickness": 8,
+  "styleRounded": true,
+  "styleGlow": false,
+  "className": "",
+  "x": 520,
+  "y": 80,
+  "wires": []
+ },
+ {
+  "id": "tHdg",
+  "type": "ui-text",
+  "z": "tab",
+  "name": "heading",
+  "group": "gLive",
+  "order": 3,
+  "width": 3,
+  "height": 1,
+  "label": "Heading",
+  "format": "{{msg.payload}}",
+  "layout": "row-spread",
+  "style": false,
+  "className": "",
+  "x": 520,
+  "y": 120,
+  "wires": []
+ },
+ {
+  "id": "tState",
+  "type": "ui-text",
+  "z": "tab",
+  "name": "state",
+  "group": "gLive",
+  "order": 4,
+  "width": 3,
+  "height": 1,
+  "label": "Patrol state",
+  "format": "{{msg.payload}}",
+  "layout": "row-spread",
+  "style": false,
+  "className": "",
+  "x": 520,
+  "y": 160,
+  "wires": []
+ },
+ {
+  "id": "chart",
+  "type": "ui-chart",
+  "z": "tab",
+  "name": "distance",
+  "group": "gHist",
+  "order": 1,
+  "width": 12,
+  "height": 5,
+  "label": "",
+  "chartType": "line",
+  "category": "topic",
+  "categoryType": "msg",
+  "xAxisLabel": "",
+  "xAxisProperty": "",
+  "xAxisPropertyType": "timestamp",
+  "xAxisType": "time",
+  "xAxisFormat": "",
+  "xAxisFormatType": "auto",
+  "yAxisLabel": "cm",
+  "yAxisProperty": "payload",
+  "yAxisPropertyType": "msg",
+  "ymin": "0",
+  "ymax": "300",
+  "action": "append",
+  "stackSeries": false,
+  "pointShape": "false",
+  "pointRadius": 0,
+  "showLegend": true,
+  "removeOlder": "5",
+  "removeOlderUnit": "60",
+  "removeOlderPoints": "",
+  "colors": [
+   "#2f81f7",
+   "#d29922",
+   "#2ea043",
+   "#f85149",
+   "#a371f7",
+   "#3fb950",
+   "#db6d28",
+   "#8b949e",
+   "#e3b341"
+  ],
+  "textColor": [
+   "#8b949e"
+  ],
+  "textColorDefault": false,
+  "gridColor": [
+   "#30363d"
+  ],
+  "gridColorDefault": false,
+  "className": "",
+  "interpolation": "linear",
+  "x": 520,
+  "y": 200,
+  "wires": [
+   []
+  ]
+ },
+ {
+  "id": "inStatus",
+  "type": "mqtt in",
+  "z": "tab",
+  "name": "status",
+  "topic": "rover/status",
+  "qos": "0",
+  "datatype": "json",
+  "broker": "broker",
+  "nl": false,
+  "rap": true,
+  "rh": 0,
+  "inputs": 0,
+  "x": 120,
+  "y": 260,
+  "wires": [
+   [
+    "fStatus"
+   ]
+  ]
+ },
+ {
+  "id": "fStatus",
+  "type": "function",
+  "z": "tab",
+  "name": "status",
+  "func": "msg.payload = msg.payload.online ? 'online' : 'OFFLINE';\nreturn msg;",
+  "outputs": 1,
+  "x": 300,
+  "y": 260,
+  "wires": [
+   [
+    "tOnline"
+   ]
+  ]
+ },
+ {
+  "id": "tOnline",
+  "type": "ui-text",
+  "z": "tab",
+  "name": "online",
+  "group": "gLive",
+  "order": 5,
+  "width": 3,
+  "height": 1,
+  "label": "Rover",
+  "format": "{{msg.payload}}",
+  "layout": "row-spread",
+  "style": false,
+  "className": "",
+  "x": 520,
+  "y": 260,
+  "wires": []
+ },
+ {
+  "id": "bLap",
+  "type": "ui-button",
+  "z": "tab",
+  "name": "lap",
+  "group": "gPatrol",
+  "order": 1,
+  "width": 3,
+  "height": 1,
+  "label": "Start 4-leg patrol",
+  "tooltip": "",
+  "color": "",
+  "bgcolor": "",
+  "className": "",
+  "icon": "play",
+  "iconPosition": "left",
+  "payload": "{\"patrol\":4}",
+  "payloadType": "json",
+  "topic": "rover/cmd",
+  "topicType": "str",
+  "buttonColor": "",
+  "textColor": "",
+  "iconColor": "",
+  "enableClick": true,
+  "x": 120,
+  "y": 340,
+  "wires": [
+   [
+    "outCmd"
+   ]
+  ]
+ },
+ {
+  "id": "bLeg",
+  "type": "ui-button",
+  "z": "tab",
+  "name": "leg",
+  "group": "gPatrol",
+  "order": 2,
+  "width": 3,
+  "height": 1,
+  "label": "Single leg",
+  "tooltip": "",
+  "color": "",
+  "bgcolor": "",
+  "className": "",
+  "icon": "debug-step-over",
+  "iconPosition": "left",
+  "payload": "{\"patrol\":1}",
+  "payloadType": "json",
+  "topic": "rover/cmd",
+  "topicType": "str",
+  "buttonColor": "",
+  "textColor": "",
+  "iconColor": "",
+  "enableClick": true,
+  "x": 120,
+  "y": 380,
+  "wires": [
+   [
+    "outCmd"
+   ]
+  ]
+ },
+ {
+  "id": "outCmd",
+  "type": "mqtt out",
+  "z": "tab",
+  "name": "cmd",
+  "topic": "rover/cmd",
+  "qos": "1",
+  "retain": "false",
+  "broker": "broker",
+  "x": 320,
+  "y": 360,
+  "wires": []
+ },
+ {
+  "id": "inVer",
+  "type": "mqtt in",
+  "z": "tab",
+  "name": "verdicts",
+  "topic": "rover/verdict",
+  "qos": "1",
+  "datatype": "json",
+  "broker": "broker",
+  "nl": false,
+  "rap": true,
+  "rh": 0,
+  "inputs": 0,
+  "x": 120,
+  "y": 440,
+  "wires": [
+   [
+    "fVer",
+    "fImg"
+   ]
+  ]
+ },
+ {
+  "id": "fVer",
+  "type": "function",
+  "z": "tab",
+  "name": "history",
+  "func": "const v = msg.payload;\nconst rows = context.get('rows') || [];\nrows.unshift({time: new Date(v.ts * 1000).toLocaleTimeString(), patrol: v.pid, cp: v.cp, verdict: v.verdict, regions: v.regions.length, changed: v.changed === null ? '' : v.changed + '%', ssim: v.ssim === null ? '' : v.ssim});\ncontext.set('rows', rows.slice(0, 40));\nreturn {payload: rows.slice(0, 40)};",
+  "outputs": 1,
+  "x": 300,
+  "y": 440,
+  "wires": [
+   [
+    "table"
+   ]
+  ]
+ },
+ {
+  "id": "table",
+  "type": "ui-table",
+  "z": "tab",
+  "name": "verdicts",
+  "group": "gPatrol",
+  "order": 4,
+  "width": 6,
+  "height": 6,
+  "maxrows": 8,
+  "passthru": false,
+  "autocols": true,
+  "showSearch": false,
+  "selectionType": "none",
+  "columns": [],
+  "mobileBreakpoint": "sm",
+  "mobileBreakpointType": "defaults",
+  "action": "replace",
+  "className": "",
+  "x": 500,
+  "y": 440,
+  "wires": []
+ },
+ {
+  "id": "fImg",
+  "type": "function",
+  "z": "tab",
+  "name": "image",
+  "func": "const v = msg.payload;\nconst f = v.verdict === 'BASELINE' ? 'f_00001.jpg' : 'diff.jpg';\nmsg.payload = {src: `/scans/${v.pid}-cp${v.cp}/${f}?t=${Date.now()}`, caption: `${v.pid} \u00b7 checkpoint ${v.cp} \u00b7 ${v.verdict}`, bad: v.verdict === 'REVIEW'};\nreturn msg;",
+  "outputs": 1,
+  "x": 300,
+  "y": 480,
+  "wires": [
+   [
+    "img"
+   ]
+  ]
+ },
+ {
+  "id": "img",
+  "type": "ui-template",
+  "z": "tab",
+  "group": "gPatrol",
+  "page": "",
+  "ui": "",
+  "name": "latest",
+  "order": 3,
+  "width": 6,
+  "height": 4,
+  "head": "",
+  "format": "<template>\n  <div v-if=\"msg && msg.payload\">\n    <img :src=\"msg.payload.src\" style=\"width:100%;border-radius:6px\">\n    <div :style=\"{color: msg.payload.bad ? '#f85149' : '#2ea043', marginTop: '6px'}\">{{ msg.payload.caption }}</div>\n  </div>\n  <div v-else style=\"color:#8b949e\">No checkpoint yet</div>\n</template>",
+  "storeOutMessages": true,
+  "passthru": false,
+  "resendOnRefresh": true,
+  "templateScope": "local",
+  "className": "",
+  "x": 500,
+  "y": 480,
+  "wires": [
+   []
+  ]
+ },
+ {
+  "id": "gSearch",
+  "type": "ui-group",
+  "name": "Search & rescue",
+  "page": "page",
+  "width": "6",
+  "height": "1",
+  "order": 4,
+  "showTitle": true,
+  "className": "",
+  "visible": "true",
+  "disabled": "false"
+ },
+ {
+  "id": "selCls",
+  "type": "ui-dropdown",
+  "z": "tab",
+  "group": "gSearch",
+  "name": "target",
+  "label": "Target",
+  "tooltip": "",
+  "order": 1,
+  "width": 3,
+  "height": 1,
+  "passthru": false,
+  "multiple": false,
+  "chips": false,
+  "clearable": false,
+  "options": [
+   {
+    "label": "person",
+    "value": "person",
+    "type": "str"
+   },
+   {
+    "label": "backpack",
+    "value": "backpack",
+    "type": "str"
+   },
+   {
+    "label": "bottle",
+    "value": "bottle",
+    "type": "str"
+   },
+   {
+    "label": "cup",
+    "value": "cup",
+    "type": "str"
+   },
+   {
+    "label": "chair",
+    "value": "chair",
+    "type": "str"
+   },
+   {
+    "label": "dog",
+    "value": "dog",
+    "type": "str"
+   },
+   {
+    "label": "cat",
+    "value": "cat",
+    "type": "str"
+   },
+   {
+    "label": "suitcase",
+    "value": "suitcase",
+    "type": "str"
+   }
+  ],
+  "payload": "",
+  "topic": "cls",
+  "topicType": "str",
+  "typeIsComboBox": false,
+  "className": "",
+  "x": 120,
+  "y": 560,
+  "wires": [
+   [
+    "fCls"
+   ]
+  ]
+ },
+ {
+  "id": "fCls",
+  "type": "function",
+  "z": "tab",
+  "name": "remember",
+  "func": "flow.set('cls', msg.payload);\nreturn null;",
+  "outputs": 1,
+  "x": 300,
+  "y": 560,
+  "wires": [
+   []
+  ]
+ },
+ {
+  "id": "bFind",
+  "type": "ui-button",
+  "z": "tab",
+  "name": "find",
+  "group": "gSearch",
+  "order": 2,
+  "width": 3,
+  "height": 1,
+  "label": "Search",
+  "tooltip": "",
+  "color": "",
+  "bgcolor": "",
+  "className": "",
+  "icon": "magnify",
+  "iconPosition": "left",
+  "payload": "",
+  "payloadType": "str",
+  "topic": "rover/cmd",
+  "topicType": "str",
+  "buttonColor": "",
+  "textColor": "",
+  "iconColor": "",
+  "enableClick": true,
+  "x": 120,
+  "y": 600,
+  "wires": [
+   [
+    "fFind"
+   ]
+  ]
+ },
+ {
+  "id": "fFind",
+  "type": "function",
+  "z": "tab",
+  "name": "cmd",
+  "func": "msg.payload = {search: flow.get('cls') || 'person'};\nreturn msg;",
+  "outputs": 1,
+  "x": 300,
+  "y": 600,
+  "wires": [
+   [
+    "outCmd"
+   ]
+  ]
+ },
+ {
+  "id": "inSearch",
+  "type": "mqtt in",
+  "z": "tab",
+  "name": "search",
+  "topic": "rover/search",
+  "qos": "0",
+  "datatype": "json",
+  "broker": "broker",
+  "nl": false,
+  "rap": true,
+  "rh": 0,
+  "inputs": 0,
+  "x": 120,
+  "y": 660,
+  "wires": [
+   [
+    "fSearch"
+   ]
+  ]
+ },
+ {
+  "id": "fSearch",
+  "type": "function",
+  "z": "tab",
+  "name": "view",
+  "func": "const r = msg.payload;\nmsg.payload = {src: `/scans/${r.sid}/last.jpg?t=${Date.now()}`, caption: r.found ? `${r.cls} found \u00b7 ${Math.round(r.score*100)}% \u00b7 ${Math.round((r.cx-0.5)*66)}\u00b0 off centre` : `searching for ${r.cls}\u2026`, bad: !r.found};\nreturn msg;",
+  "outputs": 1,
+  "x": 300,
+  "y": 660,
+  "wires": [
+   [
+    "sImg"
+   ]
+  ]
+ },
+ {
+  "id": "sImg",
+  "type": "ui-template",
+  "z": "tab",
+  "group": "gSearch",
+  "page": "",
+  "ui": "",
+  "name": "view",
+  "order": 3,
+  "width": 6,
+  "height": 4,
+  "head": "",
+  "format": "<template>\n  <div v-if=\"msg && msg.payload\">\n    <img :src=\"msg.payload.src\" style=\"width:100%;border-radius:6px\">\n    <div :style=\"{color: msg.payload.bad ? '#d29922' : '#2ea043', marginTop: '6px'}\">{{ msg.payload.caption }}</div>\n  </div>\n  <div v-else style=\"color:#8b949e\">Pick a target and press Search</div>\n</template>",
+  "storeOutMessages": true,
+  "passthru": false,
+  "resendOnRefresh": true,
+  "templateScope": "local",
+  "className": "",
+  "x": 500,
+  "y": 660,
+  "wires": [
+   []
+  ]
+ }
 ]

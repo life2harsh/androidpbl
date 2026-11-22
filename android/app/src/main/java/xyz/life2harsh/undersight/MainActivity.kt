@@ -135,6 +135,7 @@ class MainActivity : Activity(), SensorEventListener {
             setOnLongClickListener { askHost(); true }
         }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { setMargins(dp(10), dp(10), 0, 0) })
         addView(LinearLayout(context).apply {
+            addView(button("FIND").apply { background = bg("#990D0F12", 10); setOnClickListener { find() } }, lp(-2, dp(44)))
             for ((t, path) in listOf("⟳" to "/cam/rot", "⇄" to "/cam/switch"))
                 addView(button(t).apply { background = bg("#990D0F12", 10); setOnClickListener { camCfg(path) } }, lp(dp(44), dp(44)).apply { leftMargin = dp(6) })
         }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply { setMargins(0, dp(10), dp(10), 0) })
@@ -199,6 +200,11 @@ class MainActivity : Activity(), SensorEventListener {
             prefs.edit().putString("host", rover.host).apply()
             video?.close()
         }.setNegativeButton("Cancel", null).show()
+    }
+
+    private fun find() = thread {
+        val r = rover.get("/search?cls=person")
+        ui.post { status.text = if (r == null) "rover offline" else "searching for person" }
     }
 
     private fun camCfg(path: String) = thread {

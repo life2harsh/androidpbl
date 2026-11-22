@@ -18,7 +18,7 @@ JS = open("/cam/jmuxer.min.js", "rb").read()
 IDLE = 10
 
 cv = threading.Condition()
-st = {"cfg": b"", "frame": b"", "key": False, "seq": 0, "viewers": 0, "torch": False, "ctl": None}
+st = {"cfg": b"", "frame": b"", "key": False, "seq": 0, "viewers": 0, "torch": False, "ctl": None, "kf": b"", "kseq": 0}
 rec = {}
 CFG = "/scans/cam.json"
 try:
@@ -119,6 +119,8 @@ def run():
                         st["cfg"] = d
                     else:
                         st.update(frame=d, key=bool(pf >> 61 & 1), seq=st["seq"] + 1)
+                        if st["key"]:
+                            st.update(kf=d, kseq=st["kseq"] + 1)
                         rec_feed(pf, d)
                     cv.notify_all()
                     idle = None if st["viewers"] else idle or time.time()
@@ -152,6 +154,21 @@ class H(BaseHTTPRequestHandler):
         if self.path == "/jmuxer.js":
             self.head("text/javascript")
             self.wfile.write(JS)
+        elif self.path == "/snap.jpg":
+            with cv:
+                st["viewers"] += 1
+                cv.notify_all()
+                n = st["kseq"]
+                ok = cv.wait_for(lambda: st["kseq"] > n, timeout=8)
+                st["viewers"] -= 1
+                data = st["cfg"][12:] + st["kf"][12:]
+            jpg = ok and subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "h264", "-i", "-", "-frames:v", "1", "-f", "image2pipe", "-c:v", "mjpeg", "-q:v", "3", "-"],
+                                        input=data, capture_output=True).stdout
+            if jpg:
+                self.head("image/jpeg")
+                self.wfile.write(jpg)
+            else:
+                self.send_error(503)
         elif m := re.fullmatch(r"/cam(/rot|/switch)?", self.path):
             if m[1]:
                 cfg["rot" if m[1] == "/rot" else "id"] ^= 180 if m[1] == "/rot" else 1
