@@ -33,7 +33,7 @@ Output: the verdict, inliers, SSIM, % area changed, regions, and a `diff.jpg` ov
 | **YOLO-World m 320** | **1590** | shoes 0.70–0.87, finds sandals; best overall |
 
 - **Colour:** the median HSV of the central half of each box. Low value → black; low saturation → white/grey; otherwise hue bins for red, orange, yellow, green, blue and purple. This lets a search target be "red backpack" or "white person".
-- **Camera exposure:** scrcpy's `camera_fps` locks the frame rate, which caps exposure time. At 30 fps indoor frames averaged brightness 92/255; at 15 fps, 156. The bridge uses 15.
+- **Camera exposure:** scrcpy's `camera_fps` caps exposure time, and the camera delivers fewer frames than requested indoors. Measured at night (brightness / delivered fps): 15 → 127 / 10.5, 20 → 130 / 14.8, 24 → 92 / 19.7, 30 → 53 / 27.3. The bridge uses 20: same brightness as 15 with 40% more frames.
 - **Live path:** the cam bridge keeps one ffmpeg decoder running (`/live.jpg`, about 0.2 s old). The hub detector loop runs only while someone polls `/dets` (it stays alive 3 s after the last poll), so it costs nothing when idle.
 - **App:** draws the boxes over the video (the target class in red). Tapping a box sends `/search` with that box's class and colour, and the rover goes to it. Long-pressing FIND picks the class and colour from a list.
 

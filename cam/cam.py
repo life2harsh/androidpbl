@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 ADB = ["adb", "-s", "HMCQEY89PNEAC66X"]
 JAR = "/data/local/tmp/scrcpy-server.jar"
 ARGS = ("tunnel_forward=true audio=false control=true clipboard_autosync=false power_on=false cleanup=false video_source=camera "
-        "camera_size=640x480 camera_fps=15 video_codec=h264 video_bit_rate=1000000 "
+        "camera_size=640x480 camera_fps=20 video_codec=h264 video_bit_rate=1000000 "
         "video_codec_options=i-frame-interval=1 send_dummy_byte=false send_device_meta=false "
         "send_frame_meta=true")
 JS = open("/cam/jmuxer.min.js", "rb").read()
