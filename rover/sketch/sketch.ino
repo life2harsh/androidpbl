@@ -26,7 +26,6 @@ volatile bool wantCal = false;
 volatile unsigned long autoAt = 0, holdAt = 0;
 volatile int holdV = 0, holdStop = 0, turnV = 0;
 volatile unsigned long turnAt = 0;
-unsigned long turnFrom = 0;
 bool turning = false, tdone = false;
 float th0 = 0;
 bool held = false, near = false, stopped = false;
@@ -230,12 +229,11 @@ void loop() {
   if (h && !held) { tgt = hdg; iacc = 0; near = stopped = false; }
   held = h;
   bool tr = !on && !h && turnAt && (long)(millis() - turnAt) < 400;
-  if (tr && !turning) { th0 = hdg; tdone = false; turnFrom = now; }
+  if (tr && !turning) { th0 = hdg; tdone = false; }
   turning = tr;
   if (tr && !tdone) {
     tdone = fabsf(turnV / 10.0f) - fabsf(hdg - th0) <= fabsf(rate) * 0.12f;
-    int p = fabsf(rate) < 15 ? min(255, SPIN + (int)(now - turnFrom) / 4) : SPIN;
-    int s = tdone ? 0 : turnV > 0 ? p : -p;
+    int s = tdone ? 0 : turnV > 0 ? SPIN : -SPIN;
     setLeft(s);
     setRight(-s);
   }
