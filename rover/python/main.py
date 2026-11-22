@@ -74,10 +74,11 @@ def patrol(legs, stop_mm):
         spin(20, -1)
         for k in range(legs):
             patrol_st.update(state="drive", cp=k)
-            Bridge.notify("stopmm", stop_mm)
-            cmd = ("hold", CRUISE)
-            wait(lambda: 0 <= sense[1] <= stop_mm, 30)
-            cmd = ("lr", 0, 0)
+            if stop_mm:
+                Bridge.notify("stopmm", stop_mm)
+                cmd = ("hold", CRUISE)
+                wait(lambda: 0 <= sense[1] <= stop_mm, 30)
+                cmd = ("lr", 0, 0)
             patrol_st["state"] = "capture"
             cam("/torch/1")
             time.sleep(0.8)
@@ -87,6 +88,8 @@ def patrol(legs, stop_mm):
             cam("/torch/0")
             if n < 5:
                 raise RuntimeError("%d frames at cp%d" % (n, k))
+            if not stop_mm:
+                continue
             patrol_st["state"] = "turn"
             t = time.time()
             while 0 <= sense[1] < stop_mm and time.time() - t < 1.5:
