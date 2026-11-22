@@ -25,7 +25,7 @@ int16_t pv[7];
 volatile bool wantCal = false;
 volatile unsigned long autoAt = 0, holdAt = 0;
 volatile int holdV = 0, holdStop = 0;
-bool held = false;
+bool held = false, near = false, stopped = false;
 bool was = false;
 int st = 0, turns = 0, dir = 0;
 float tgt = 0, t0 = 0;
@@ -223,10 +223,13 @@ void loop() {
   was = on;
   if (on) pilot(now);
   bool h = !on && holdAt && (long)(millis() - holdAt) < 400;
-  if (h && !held) { tgt = hdg; iacc = 0; }
+  if (h && !held) { tgt = hdg; iacc = 0; near = stopped = false; }
   held = h;
   if (h) {
-    int f = mm(echoes[1]), v = f < 0 ? holdV : f <= holdStop ? 0 : f < 2 * holdStop ? min((int)holdV, SLOW) : holdV;
+    int f = mm(echoes[1]);
+    near |= f >= 0 && f < 2 * holdStop;
+    stopped |= f >= 0 && f <= holdStop;
+    int v = stopped ? 0 : near ? min((int)holdV, SLOW) : holdV;
     setLeft(v ? v - corr : 0);
     setRight(v ? v + corr : 0);
   }
