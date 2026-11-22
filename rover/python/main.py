@@ -160,25 +160,16 @@ def search(cls, col=""):
             if 0 <= sense[1] <= 450:
                 if d["area"] >= 0.05 or len(ways) == 3:
                     break
-                cmd = ("lr", -CRUISE, -CRUISE)
-                time.sleep(1.0)
-                cmd = ("lr", 0, 0)
-                time.sleep(0.3)
-                side = ways[0] if ways else side
-                spin(45, side)
-                if not ways:
-                    room = sense[1] if sense[1] >= 0 else 9999
-                    spin(90, -side)
-                    if 0 <= sense[1] < room:
-                        spin(90, side)
-                    else:
-                        side = -side
-                ways.append(side)
-                fwd(1.0)
-                spin(45, -side)
-                if not 0 <= sense[1] <= 450:
-                    fwd(0.8)
-                n = reacquire(q, brg, -side)
+                h0 = sense[2] / 10
+                sc = scan()
+                ok = [a for i, (a, m) in enumerate(sc) if all(not 0 <= x[1] < 500 for x in sc[max(i - 1, 0):i + 2])]
+                if not ok:
+                    break
+                a = min(ok, key=lambda a: abs(a - rsign * (brg - h0)))
+                ways.append(a)
+                face(h0 + rsign * a)
+                fwd(1.0, 200)
+                n = reacquire(q, brg, 1 if a < 0 else -1)
             else:
                 fwd(1.2)
                 n = hub(q + "&near=%.3f" % 0.5)
