@@ -16,9 +16,6 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationManager
-import android.media.AudioFormat
-import android.media.AudioRecord
-import android.media.MediaRecorder
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -60,7 +57,6 @@ class MainActivity : Activity(), SensorEventListener {
     @Volatile private var brake = false
     @Volatile private var spd = 220
     @Volatile private var alive = false
-    @Volatile private var estop = false
     @Volatile private var lux = -1f
     @Volatile private var loc: Location? = null
     private var extras = false
@@ -71,7 +67,7 @@ class MainActivity : Activity(), SensorEventListener {
     private var video: Video? = null
     @Volatile private var recName: String? = null
     private val log by lazy {
-        File(getExternalFilesDir(null), "telemetry-${stamp()}.csv").bufferedWriter().apply { write("t_ms,up_mm,front_mm,hdg,lux,lat,lon,estop,rec\n") }
+        File(getExternalFilesDir(null), "telemetry-${stamp()}.csv").bufferedWriter().apply { write("t_ms,up_mm,front_mm,hdg,lux,lat,lon,rec\n") }
     }
     private lateinit var surface: SurfaceView
 
@@ -110,7 +106,7 @@ class MainActivity : Activity(), SensorEventListener {
         thread(isDaemon = true, name = "drive") { driveLoop() }
         thread(isDaemon = true, name = "sense") { senseLoop() }
         thread(isDaemon = true, name = "dets") { while (true) { rover.get("/dets", 8090)?.let { runCatching { overlay.update(it) } }; Thread.sleep(150) } }
-        val need = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.RECORD_AUDIO)
+        val need = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
         if (need.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }) startExtras() else requestPermissions(need, 1)
     }
 
@@ -290,35 +286,12 @@ class MainActivity : Activity(), SensorEventListener {
                     requestLocationUpdates(pr, 2000, 0f, { loc = it }, Looper.getMainLooper())
                 }
             }
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
-            thread(isDaemon = true, name = "clap") { clapLoop() }
-    }
-
-    @SuppressLint("MissingPermission")
-    private fun clapLoop() {
-        val n = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-        val rec = AudioRecord(MediaRecorder.AudioSource.MIC, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, n)
-        val buf = ShortArray(n / 2)
-        var last = 0L
-        rec.startRecording()
-        while (true) {
-            val k = rec.read(buf, 0, buf.size)
-            var pk = 0
-            for (j in 0 until k) pk = max(pk, abs(buf[j].toInt()))
-            val now = System.currentTimeMillis()
-            if (pk < 18000 || now - last < 150) continue
-            if (now - last < 700) {
-                estop = !estop
-                last = 0
-                vib.vibrate(VibrationEffect.createOneShot(if (estop) 300 else 60, VibrationEffect.DEFAULT_AMPLITUDE))
-            } else last = now
-        }
     }
 
     private fun driveLoop() {
         var was = false
         while (true) {
-            val on = (stick || tilting) && !brake && !estop
+            val on = (stick || tilting) && !brake
             if (on || was) {
                 var l = 0; var r = 0
                 if (on) {
@@ -337,7 +310,7 @@ class MainActivity : Activity(), SensorEventListener {
             val s = rover.sense()
             ui.post { show(s) }
             val l = loc
-            log.write("${System.currentTimeMillis()},${s?.up ?: ""},${s?.front ?: ""},${s?.hdg ?: ""},${if (lux < 0) "" else lux},${l?.latitude ?: ""},${l?.longitude ?: ""},${if (estop) 1 else 0},${recName ?: ""}\n")
+            log.write("${System.currentTimeMillis()},${s?.up ?: ""},${s?.front ?: ""},${s?.hdg ?: ""},${if (lux < 0) "" else lux},${l?.latitude ?: ""},${l?.longitude ?: ""},${recName ?: ""}\n")
             Thread.sleep(250)
         }
     }
@@ -355,11 +328,10 @@ class MainActivity : Activity(), SensorEventListener {
         upT.text = "↑ ${cm(s.up)} cm"
         frontT.text = "→ ${cm(s.front)} cm"
         frontT.setTextColor(Color.parseColor(if (s.front in 0..199) "#F85149" else "#E7E9EC"))
-        if (auto && (estop || brake)) { auto = false; thread { rover.get("/a?on=0") } }
+        if (auto && brake) { auto = false; thread { rover.get("/a?on=0") } }
         autoB.background = bg(if (s.mode >= 0) "#2EA043" else "#1B1F26")
         compass.deg = if (s.hdg > -99999) ((s.hdg / 10f % 360 + 540) % 360 - 180) else null
         status.text = when {
-            estop -> "STOPPED · double-clap to resume"
             brake -> "BRAKE · proximity covered"
             s.mode >= 0 -> "auto: " + (listOf("drive", "turn", "check", "stuck").getOrNull(s.mode) ?: s.mode)
             tilting -> "tilt  steer %+.2f  throttle %+.2f".format(jx, jy)
