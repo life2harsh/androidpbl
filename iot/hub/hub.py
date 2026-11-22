@@ -79,14 +79,16 @@ HUES = ((10, "red"), (22, "orange"), (35, "yellow"), (85, "green"), (130, "blue"
 
 def colour(img, box):
     x, y, w, h = box
-    roi = cv2.cvtColor(img[max(0, y + h // 4):y + 3 * h // 4, max(0, x + w // 4):x + 3 * w // 4], cv2.COLOR_BGR2HSV).reshape(-1, 3)
-    if not len(roi):
+    roi = img[max(0, y + h // 4):y + 3 * h // 4, max(0, x + w // 4):x + 3 * w // 4].astype(np.float32)
+    if not roi.size:
         return "unknown"
-    hh, s, v = np.median(roi, 0)
+    m = img.reshape(-1, 3).mean(0)
+    roi = np.clip(roi * (m.mean() / np.maximum(m, 1)), 0, 255).astype(np.uint8)
+    hh, s, v = np.median(cv2.cvtColor(roi, cv2.COLOR_BGR2HSV).reshape(-1, 3), 0)
     if v < 50:
         return "black"
-    if s < 40:
-        return "white" if v > 170 else "grey"
+    if s < 60:
+        return "white" if v > 160 else "grey"
     return next(n for t, n in HUES if hh < t)
 
 
@@ -120,18 +122,20 @@ def detector_loop():
         live["out"] = json.dumps({"ts": time.time(), "dets": dets}).encode()
 
 
-def look(cls, sid, col=""):
+def look(cls, sid, col="", near=None):
     img = cv2.imdecode(np.frombuffer(urlopen(CAM + "/snap.jpg", timeout=10).read(), np.uint8), cv2.IMREAD_COLOR)
-    hits = [d for d in detector(img) if d["cls"] == cls and (not col or colour(img, d["box"]) == col)]
-    best = max(hits, key=lambda d: d["score"]) if hits else None
+    hits = [dict(d, colour=colour(img, d["box"])) for d in detector(img, 0.25) if d["cls"] == cls]
+    W = img.shape[1]
+    best = max(hits, key=lambda d: d["score"] + 0.3 * (d["colour"] == col) - (abs((d["box"][0] + d["box"][2] / 2) / W - near) if near is not None else 0)) if hits else None
     r = {"sid": sid, "cls": cls, "colour": col, "found": bool(best), "ts": time.time()}
     if best:
         x, y, w, h = best["box"]
-        r.update(score=best["score"], box=best["box"], cx=(x + w / 2) / img.shape[1], area=w * h / (img.shape[0] * img.shape[1]))
+        r.update(score=best["score"], seen_colour=best["colour"], box=best["box"], cx=(x + w / 2) / img.shape[1], area=w * h / (img.shape[0] * img.shape[1]))
         cv2.rectangle(img, (x, y), (x + w, y + h), (0, 0, 255), 2)
-        cv2.putText(img, f"{col} {cls} {best['score']:.2f}".strip(), (x, max(14, y - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+        cv2.putText(img, f"{best['colour']} {cls} {best['score']:.2f}".strip(), (x, max(14, y - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
     os.makedirs(f"{SCANS}/{sid}", exist_ok=True)
     cv2.imwrite(f"{SCANS}/{sid}/last.jpg", img)
+    cv2.imwrite(f"{SCANS}/{sid}/look-{time.strftime('%H%M%S')}.jpg", img)
     if best:
         cv2.imwrite(f"{SCANS}/{sid}/hit.jpg", img)
     local.publish("rover/search", json.dumps(r))
@@ -156,7 +160,7 @@ class H(BaseHTTPRequestHandler):
             if u.path == "/classes":
                 r = detector.names
             elif u.path == "/look":
-                r, _ = look(q.get("cls", "person"), q.get("sid", "s"), q.get("color", ""))
+                r, _ = look(q.get("cls", "person"), q.get("sid", "s"), q.get("color", ""), float(q["near"]) if "near" in q else None)
             elif u.path == "/found":
                 r = json.loads(q["r"])
                 emit("rover/found", r)

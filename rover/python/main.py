@@ -100,9 +100,9 @@ def search(cls, col=""):
             wait(lambda: 0 <= sense[1] <= 450 or time.time() - t > 1.2, 3)
             cmd = ("lr", 0, 0)
             time.sleep(0.4)
-            n = hub(q)
+            n = hub(q + "&near=%.3f" % 0.5)
             d = n if n.get("found") else d
-        n = hub(q)
+        n = hub(q + "&near=%.3f" % 0.5)
         d = n if n.get("found") else d
         d.update(hdg=sense[2] / 10, dist_mm=sense[1])
         hub("/found?r=" + quote(json.dumps(d)))

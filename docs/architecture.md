@@ -42,8 +42,9 @@ When the patrol is done, the hub compares each checkpoint with the same checkpoi
 
 `search → approach → found | lost | failed`
 
-1. Ask the hub to look (`/look?cls=&color=`). If nothing is found, spin 30° and look again, up to 13 times (a full circle).
-2. Approach: heading error = (box centre x − 0.5) × 66° FOV. Spin if the error is over 8°, otherwise drive 1.2 s with a firmware stop at 45 cm. Look again. Repeat up to 6 times.
-3. Stop when the front distance is ≤ 45 cm or the box fills over 30% of the frame. Report the heading and distance to `rover/found`.
+1. **Look:** the hub grabs a fresh frame and runs YOLO-World (416 px, score > 0.25). Of the detections matching the class, the best one is chosen by score, plus 0.3 if its colour matches the requested colour. Colour only ranks candidates and never rejects one, because colour under room lighting is unreliable. Every look frame is saved to `/scans/<sid>/look-*.jpg`.
+2. **Scan:** if no object of the class is in view, spin 30° and look again, up to 13 times (a full circle). The first look happens before any spin, so an object already in front is found immediately.
+3. **Approach:** heading error = (box centre x − 0.5) × 66° FOV. Spin if the error is over 8°, otherwise drive 1.2 s with a firmware stop at 45 cm, then look again, up to 6 times. Re-looks prefer the detection closest to the image centre (`near=0.5`), so the rover stays on the object it was heading for (one shoe of a pair, not the other).
+4. **Stop:** when the front distance is ≤ 45 cm or the box fills over 30% of the frame. Report the heading and distance to `rover/found`.
 
 "Fetch" in the app is the same flow with the class and colour of the box the user tapped.
