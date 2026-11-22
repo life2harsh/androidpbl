@@ -44,8 +44,8 @@ When the patrol is done, the hub compares each checkpoint with the same checkpoi
 
 1. **Look:** the hub grabs a fresh frame and runs YOLO-World m (320 px, score > 0.25, synonyms accepted). Of the detections matching the class, the best one is chosen by score, plus 0.3 if its colour matches the requested colour. Colour only ranks candidates and never rejects one, because colour under room lighting is unreliable. Every look frame is saved to `/scans/<sid>/look-*.jpg`.
 2. **Scan:** if no object of the class is in view, spin 30° and look again, up to 13 times (a full circle). The first look happens before any spin, so an object already in front is found immediately.
-3. **Approach:** heading error = (box centre x − 0.5) × 66° FOV. Spin if the error is over 8°, otherwise drive 1.2 s with a firmware stop at 45 cm, then look again, up to 6 times. Re-looks prefer the detection closest to the image centre (`near=0.5`), so the rover stays on the object it was heading for (one shoe of a pair, not the other).
+3. **Approach:** heading error = (box centre x − 0.5) × 66° FOV. Spin if the error is over 8°, otherwise drive 1.2 s with a firmware stop at 45 cm, then look again, up to 8 times. Re-looks prefer the detection closest to the image centre (`near=0.5`), so the rover stays on the object it was heading for (one shoe of a pair, not the other).
 4. **Detour:** if the sonar stops the rover but the target still covers under 5% of the frame, something else is in the way. The rover backs up 0.6 s, turns 50° towards the target's side, drives up to 1 s, turns back and looks again. A second detour tries the other side. After two it stops and reports "Cannot reach …, something in the way" (state `blocked`).
-4. **Stop:** when the front distance is ≤ 45 cm or the box fills over 30% of the frame. Report the heading and distance to `rover/found`.
+5. **Stop:** when the front distance is ≤ 45 cm or the box fills over 30% of the frame. Report the heading and distance to `rover/found`.
 
 "Fetch" in the app is the same flow with the class and colour of the box the user tapped.
