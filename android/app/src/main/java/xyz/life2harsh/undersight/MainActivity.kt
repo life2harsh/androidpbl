@@ -85,6 +85,8 @@ class MainActivity : Activity(), SensorEventListener {
     private lateinit var recB: Button
     private lateinit var torchB: Button
     private lateinit var autoB: Button
+    private lateinit var overlay: Overlay
+    private var colour = ""
     @Volatile private var auto = false
     @Volatile private var torch = false
 
@@ -107,6 +109,7 @@ class MainActivity : Activity(), SensorEventListener {
         })
         thread(isDaemon = true, name = "drive") { driveLoop() }
         thread(isDaemon = true, name = "sense") { senseLoop() }
+        thread(isDaemon = true, name = "dets") { while (true) { rover.get("/dets", 8090)?.let { runCatching { overlay.update(it) } }; Thread.sleep(150) } }
         val need = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.RECORD_AUDIO)
         if (need.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }) startExtras() else requestPermissions(need, 1)
     }
@@ -124,6 +127,8 @@ class MainActivity : Activity(), SensorEventListener {
                 override fun surfaceDestroyed(h: SurfaceHolder) { video?.close(); video = null }
             })
         }, FrameLayout.LayoutParams(-1, -1, Gravity.CENTER))
+        this@MainActivity.overlay = Overlay(context) { cls, col -> this@MainActivity.overlay.target = cls; colour = col; find() }
+        addView(this@MainActivity.overlay, FrameLayout.LayoutParams(-1, -1))
         addView(LinearLayout(context).apply {
             gravity = Gravity.CENTER_VERTICAL
             background = bg("#990D0F12", 10)
@@ -135,7 +140,7 @@ class MainActivity : Activity(), SensorEventListener {
             setOnLongClickListener { askHost(); true }
         }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { setMargins(dp(10), dp(10), 0, 0) })
         addView(LinearLayout(context).apply {
-            addView(button("FIND").apply { background = bg("#990D0F12", 10); setOnClickListener { find() } }, lp(-2, dp(44)))
+            addView(button("FIND").apply { background = bg("#990D0F12", 10); setOnClickListener { find() }; setOnLongClickListener { pickTarget(); true } }, lp(-2, dp(44)))
             for ((t, path) in listOf("⟳" to "/cam/rot", "⇄" to "/cam/switch"))
                 addView(button(t).apply { background = bg("#990D0F12", 10); setOnClickListener { camCfg(path) } }, lp(dp(44), dp(44)).apply { leftMargin = dp(6) })
         }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply { setMargins(0, dp(10), dp(10), 0) })
@@ -203,8 +208,20 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     private fun find() = thread {
-        val r = rover.get("/search?cls=person")
-        ui.post { status.text = if (r == null) "rover offline" else "searching for person" }
+        val r = rover.get("/search?cls=${overlay.target}&color=$colour")
+        ui.post { status.text = if (r == null) "rover offline" else "going to $colour ${overlay.target}".replace("_", " ") }
+    }
+
+    private fun pickTarget() {
+        val classes = arrayOf("person", "backpack", "handbag", "suitcase", "bottle", "cup", "chair", "couch", "laptop", "cell_phone", "book", "sports_ball", "teddy_bear", "dog", "cat")
+        val colours = arrayOf("any", "red", "orange", "yellow", "green", "blue", "purple", "white", "grey", "black")
+        AlertDialog.Builder(this).setTitle("Search for").setItems(classes.map { it.replace("_", " ") }.toTypedArray()) { _, i ->
+            AlertDialog.Builder(this).setTitle("Colour").setItems(colours) { _, j ->
+                overlay.target = classes[i]
+                colour = if (j == 0) "" else colours[j]
+                status.text = "target: $colour ${classes[i]}".replace("_", " ")
+            }.show()
+        }.show()
     }
 
     private fun camCfg(path: String) = thread {

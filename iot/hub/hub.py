@@ -66,24 +66,69 @@ def on_local(c, u, m):
         if cmd.get("patrol"):
             start_patrol(cmd["patrol"])
         elif cmd.get("search"):
-            get(f"/search?cls={cmd['search']}")
+            get(f"/search?cls={cmd['search']}&color={cmd.get('color', '')}")
     except OSError:
         pass
 
 
 detector = Detector(f"{DATA}/models/nanodet.onnx")
+live = {"until": 0.0, "frame": None, "out": b'{"dets": []}'}
+HUES = ((10, "red"), (22, "orange"), (35, "yellow"), (85, "green"), (130, "blue"), (160, "purple"), (180, "red"))
 
 
-def look(cls, sid):
+def colour(img, box):
+    x, y, w, h = box
+    roi = cv2.cvtColor(img[max(0, y + h // 4):y + 3 * h // 4, max(0, x + w // 4):x + 3 * w // 4], cv2.COLOR_BGR2HSV).reshape(-1, 3)
+    if not len(roi):
+        return "unknown"
+    hh, s, v = np.median(roi, 0)
+    if v < 50:
+        return "black"
+    if s < 40:
+        return "white" if v > 170 else "grey"
+    return next(n for t, n in HUES if hh < t)
+
+
+def reader():
+    while True:
+        if time.time() > live["until"]:
+            time.sleep(0.2)
+            continue
+        last = b""
+        while time.time() < live["until"]:
+            try:
+                j = urlopen(CAM + "/live.jpg", timeout=5).read()
+            except OSError:
+                time.sleep(0.3)
+                continue
+            if j != last:
+                last, live["frame"] = j, cv2.imdecode(np.frombuffer(j, np.uint8), cv2.IMREAD_COLOR)
+            time.sleep(0.05)
+        live["frame"] = None
+
+
+def detector_loop():
+    while True:
+        f, live["frame"] = live["frame"], None
+        if f is None:
+            time.sleep(0.03)
+            continue
+        h, w = f.shape[:2]
+        dets = [dict(d, colour=colour(f, d["box"]), box=[round(d["box"][0] / w, 3), round(d["box"][1] / h, 3), round(d["box"][2] / w, 3), round(d["box"][3] / h, 3)])
+                for d in detector(f, 0.45)]
+        live["out"] = json.dumps({"ts": time.time(), "dets": dets}).encode()
+
+
+def look(cls, sid, col=""):
     img = cv2.imdecode(np.frombuffer(urlopen(CAM + "/snap.jpg", timeout=10).read(), np.uint8), cv2.IMREAD_COLOR)
-    hits = [d for d in detector(img) if d["cls"] == cls]
+    hits = [d for d in detector(img) if d["cls"] == cls and (not col or colour(img, d["box"]) == col)]
     best = max(hits, key=lambda d: d["score"]) if hits else None
-    r = {"sid": sid, "cls": cls, "found": bool(best), "ts": time.time()}
+    r = {"sid": sid, "cls": cls, "colour": col, "found": bool(best), "ts": time.time()}
     if best:
         x, y, w, h = best["box"]
         r.update(score=best["score"], box=best["box"], cx=(x + w / 2) / img.shape[1], area=w * h / (img.shape[0] * img.shape[1]))
         cv2.rectangle(img, (x, y), (x + w, y + h), (0, 0, 255), 2)
-        cv2.putText(img, f"{cls} {best['score']:.2f}", (x, max(14, y - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+        cv2.putText(img, f"{col} {cls} {best['score']:.2f}".strip(), (x, max(14, y - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
     os.makedirs(f"{SCANS}/{sid}", exist_ok=True)
     cv2.imwrite(f"{SCANS}/{sid}/last.jpg", img)
     if best:
@@ -100,8 +145,15 @@ class H(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
         try:
+            if u.path == "/dets":
+                live["until"] = time.time() + 3
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(live["out"])
+                return
             if u.path == "/look":
-                r, _ = look(q.get("cls", "person"), q.get("sid", "s"))
+                r, _ = look(q.get("cls", "person"), q.get("sid", "s"), q.get("color", ""))
             elif u.path == "/found":
                 r = json.loads(q["r"])
                 emit("rover/found", r)
@@ -207,6 +259,8 @@ def analyse(p):
 
 def main():
     threading.Thread(target=sender, daemon=True).start()
+    threading.Thread(target=reader, daemon=True).start()
+    threading.Thread(target=detector_loop, daemon=True).start()
     threading.Thread(target=ThreadingHTTPServer(("0.0.0.0", 8090), H).serve_forever, daemon=True).start()
     last, aws_at, ts_at, online = None, 0, 0, None
     while True:

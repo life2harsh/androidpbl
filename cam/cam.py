@@ -20,6 +20,44 @@ IDLE = 10
 cv = threading.Condition()
 st = {"cfg": b"", "frame": b"", "key": False, "seq": 0, "viewers": 0, "torch": False, "ctl": None, "kf": b"", "kseq": 0}
 rec = {}
+dec = {"proc": None, "jpg": b"", "until": 0.0, "live": False}
+
+
+def dec_read(p):
+    buf = b""
+    while chunk := p.stdout.read(65536):
+        buf += chunk
+        while (e := buf.find(b"\xff\xd9")) >= 0:
+            dec["jpg"], buf = buf[buf.find(b"\xff\xd8"):e + 2], buf[e + 2:]
+
+
+def dec_feed(pf, d):
+    p = dec["proc"]
+    if p and time.time() > dec["until"]:
+        dec["proc"] = None
+        st["viewers"] -= 1
+        p.stdin.close()
+        return
+    if not p or not (dec["live"] or pf >> 61 & 1):
+        return
+    try:
+        if not dec["live"]:
+            p.stdin.write(st["cfg"][12:])
+            dec["live"] = True
+        p.stdin.write(d[12:])
+    except OSError:
+        pass
+
+
+def dec_start():
+    dec["until"] = time.time() + 3
+    if not dec["proc"]:
+        p = subprocess.Popen(["ffmpeg", "-loglevel", "error", "-fflags", "nobuffer", "-flags", "low_delay", "-probesize", "32", "-analyzeduration", "0",
+                              "-use_wallclock_as_timestamps", "1", "-f", "h264", "-i", "-",
+                              "-threads", "1", "-vf", "fps=8", "-f", "image2pipe", "-flush_packets", "1", "-c:v", "mjpeg", "-q:v", "5", "-"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0)
+        threading.Thread(target=dec_read, args=(p,), daemon=True).start()
+        dec.update(proc=p, live=False, jpg=b"")
+        st["viewers"] += 1
 CFG = "/scans/cam.json"
 try:
     cfg = json.load(open(CFG))
@@ -122,6 +160,7 @@ def run():
                         if st["key"]:
                             st.update(kf=d, kseq=st["kseq"] + 1)
                         rec_feed(pf, d)
+                        dec_feed(pf, d)
                     cv.notify_all()
                     idle = None if st["viewers"] else idle or time.time()
                 if idle and time.time() - idle > IDLE:
@@ -154,6 +193,15 @@ class H(BaseHTTPRequestHandler):
         if self.path == "/jmuxer.js":
             self.head("text/javascript")
             self.wfile.write(JS)
+        elif self.path == "/live.jpg":
+            with cv:
+                dec_start()
+                cv.notify_all()
+            if dec["jpg"]:
+                self.head("image/jpeg")
+                self.wfile.write(dec["jpg"])
+            else:
+                self.send_error(503)
         elif self.path == "/snap.jpg":
             with cv:
                 st["viewers"] += 1

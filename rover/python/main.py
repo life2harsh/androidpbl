@@ -71,12 +71,12 @@ def hub(path):
         return {}
 
 
-def search(cls):
+def search(cls, col=""):
     global cmd
     sid = time.strftime("s%Y%m%d-%H%M%S")
     patrol_st.update(state="search", id=sid, cp=-1, legs=0, err="")
     threading.Thread(target=warm, args=(sid,), daemon=True).start()
-    q = "/look?cls=%s&sid=%s" % (quote(cls), sid)
+    q = "/look?cls=%s&sid=%s&color=%s" % (quote(cls), sid, quote(col))
     try:
         if sense[2] <= -99999:
             raise RuntimeError("no gyro")
@@ -86,7 +86,7 @@ def search(cls):
                 break
             spin(30)
         else:
-            raise RuntimeError("no %s found" % cls)
+            raise RuntimeError(("no %s %s found" % (col, cls)).replace("  ", " "))
         patrol_st["state"] = "approach"
         for _ in range(6):
             err = (d["cx"] - 0.5) * 66
@@ -332,7 +332,7 @@ class H(BaseHTTPRequestHandler):
         elif u.path == "/search":
             if "cls" in q and patrol_st["state"] not in RUNNING:
                 patrol_st["state"] = "search"
-                threading.Thread(target=search, args=(q["cls"][0],), daemon=True).start()
+                threading.Thread(target=search, args=(q["cls"][0], q.get("color", [""])[0]), daemon=True).start()
             self._json(json.dumps(patrol_st).encode())
         elif u.path == "/cal":
             global want_cal
