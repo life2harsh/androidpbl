@@ -116,10 +116,10 @@ def search(cls, col=""):
             d = n if n.get("found") else d
         n = hub(q + "&near=%.3f" % 0.5)
         d = n if n.get("found") else d
-        d.update(hdg=sense[2] / 10, dist_mm=sense[1])
+        d.update(hdg=sense[2] / 10, dist_mm=sense[1], blocked=0 <= sense[1] <= 450 and d["area"] < 0.05)
         hub("/found?r=" + quote(json.dumps(d)))
-        cam("/say/" + quote("Found %s %s" % (d.get("seen_colour", ""), cls)))
-        patrol_st["state"] = "found"
+        cam("/say/" + quote(("Path blocked near %s %s" if d["blocked"] else "Found %s %s") % (d.get("seen_colour", ""), cls)))
+        patrol_st["state"] = "blocked" if d["blocked"] else "found"
     except RuntimeError as e:
         fail("Search", e)
     finally:
