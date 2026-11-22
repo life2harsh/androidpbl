@@ -154,12 +154,15 @@ def search(cls, col=""):
                 cmd = ("lr", 0, 0)
                 time.sleep(0.3)
                 side = ways[0] if ways else side
-                spin(50, side)
-                if not ways and 0 <= sense[1] <= 600:
+                spin(90, side)
+                if not ways and 0 <= sense[1] <= 400:
                     side = -side
-                    spin(100, side)
+                    spin(180, side)
                 ways.append(side)
-                fwd(1.0)
+                fwd(0.8)
+                spin(90, -side)
+                if not 0 <= sense[1] <= 450:
+                    fwd(1.0)
                 n = reacquire(q, brg, -side)
             else:
                 fwd(1.2)
