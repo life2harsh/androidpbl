@@ -5,3 +5,6 @@ android/local.properties
 *.apk
 __pycache__/
 .venv
+iot/.env
+iot/data/
+iot/nodered/node_modules/

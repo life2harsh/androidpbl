@@ -1,0 +1,28 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mqdata:/mosquitto/data
+  hub:
+    build:
+      context: ..
+      dockerfile: iot/hub/Dockerfile
+    network_mode: host
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - /home/arduino/scans:/scans
+      - ./data:/data
+    depends_on: [mosquitto]
+  nodered:
+    image: nodered/node-red:4.0
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./nodered:/data
+      - /home/arduino/scans:/scans:ro
+volumes:
+  mqdata:
