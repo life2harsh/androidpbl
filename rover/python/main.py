@@ -451,11 +451,12 @@ def loop():
         au = auto["on"]
         l, r, ts = state["l"], state["r"], state["ts"]
         tm, tv, tu = test["m"], test["v"], test["until"]
-    if acclog is not None:
+    log = acclog
+    if log is not None:
         n = call("imu", 0)
         w = [call(k, 0) for k in ("imuA", "imuB", "imuC")]
         s16 = lambda x: x - 65536 if x & 0x8000 else x
-        acclog.append([now, n] + [s16(x) for v in w for x in ((v >> 16) & 0xFFFF, v & 0xFFFF)] + [sense[1], cmd[0] if cmd else ""])
+        log.append([now, n] + [s16(x) for v in w for x in ((v >> 16) & 0xFFFF, v & 0xFFFF)] + [sense[1], cmd[0] if cmd else ""])
     c = cmd
     Bridge.notify("auto", int(au and not c))
     if c and c[0] in ("hold", "turn"):
