@@ -6,6 +6,7 @@ import struct
 import subprocess
 import threading
 import time
+from urllib.parse import unquote
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ADB = ["adb", "-s", "HMCQEY89PNEAC66X"]
@@ -132,6 +133,11 @@ def adb(*a):
     subprocess.run(ADB + list(a), capture_output=True)
 
 
+def say(t):
+    adb("shell", "cmd", "media_session", "volume", "--stream", "4", "--set", "15")
+    adb("shell", "run-as", "com.termux", "sh", "files/home/say", t)
+
+
 def run():
     while True:
         with cv:
@@ -232,6 +238,11 @@ class H(BaseHTTPRequestHandler):
                 pass
             self.head("application/json")
             self.wfile.write(json.dumps({"torch": st["torch"]}).encode())
+        elif m := re.fullmatch(r"/say/(.{1,200})", self.path):
+            t = re.sub(r"[^\w ]", "", unquote(m[1]))[:120]
+            threading.Thread(target=say, args=(t,), daemon=True).start()
+            self.head("application/json")
+            self.wfile.write(json.dumps({"say": t}).encode())
         elif self.path.startswith("/rec"):
             m = re.fullmatch(r"/rec/start/([\w-]{1,40})", self.path)
             with cv:

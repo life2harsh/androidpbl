@@ -4,6 +4,7 @@
 
 - **Rover app:** `arduino-app-cli app start user:rccar`. This compiles and flashes the sketch and starts `main.py` in `rccar-main-1`. For a Python-only change, copy `main.py` and run `docker restart rccar-main-1`.
 - **Camera:** connect the phone over USB, then start `~/cam/cam.py` (host network, `:8081`).
+- **Voice:** the rover announces search results through the phone (Termux:API TTS, alarm stream at full volume). One-time setup: `docker exec cam sh -c "adb shell \"run-as com.termux sh -c 'cat > files/home/say'\" < /cam/say"`. Test it with `curl localhost:8081/say/hello`.
 - **IoT stack:**
   1. `cd ~/undersight/iot`
   2. Create `.env` (chmod 600) with `TS_KEY`, `TS_CHANNEL`, `AWS_ENDPOINT` and `THING`.

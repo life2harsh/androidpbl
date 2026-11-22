@@ -106,6 +106,7 @@ def search(cls, col=""):
         d = n if n.get("found") else d
         d.update(hdg=sense[2] / 10, dist_mm=sense[1])
         hub("/found?r=" + quote(json.dumps(d)))
+        cam("/say/" + quote("Found %s %s" % (d.get("seen_colour", ""), cls)))
         patrol_st["state"] = "found"
     except RuntimeError as e:
         patrol_st.update(state="failed", err=str(e))

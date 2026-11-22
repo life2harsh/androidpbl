@@ -1,0 +1,4 @@
+#!/system/bin/sh
+P=/data/data/com.termux/files/usr
+export PREFIX=$P HOME=/data/data/com.termux/files/home LD_LIBRARY_PATH=$P/lib PATH=$P/bin:$PATH
+exec termux-tts-speak -s ALARM "$@"
