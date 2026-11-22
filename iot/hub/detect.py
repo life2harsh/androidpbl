@@ -1,3 +1,5 @@
+import threading
+
 import cv2
 import numpy as np
 
@@ -17,14 +19,17 @@ class Detector:
     def __init__(self, path):
         self.net = cv2.dnn.readNet(path)
         self.out = self.net.getUnconnectedOutLayersNames()
+        self.lock = threading.Lock()
 
     def __call__(self, img, thresh=0.4):
         h, w = img.shape[:2]
         k = SIZE / max(h, w)
         pad = np.zeros((SIZE, SIZE, 3), np.float32)
         pad[:int(h * k), :int(w * k)] = cv2.resize(img, (int(w * k), int(h * k)))
-        self.net.setInput(cv2.dnn.blobFromImage((pad - MEAN) / STD))
-        outs = sorted(self.net.forward(self.out), key=lambda o: (o.shape[1], o.shape[2]), reverse=True)
+        with self.lock:
+            self.net.setInput(cv2.dnn.blobFromImage((pad - MEAN) / STD))
+            outs = self.net.forward(self.out)
+        outs = sorted(outs, key=lambda o: (o.shape[1], o.shape[2]), reverse=True)
         boxes, scores, ids = [], [], []
         for (cls, reg), c, s in zip(zip(outs[::2], outs[1::2]), CENTERS, STRIDES):
             cls, reg = cls[0], reg[0]
