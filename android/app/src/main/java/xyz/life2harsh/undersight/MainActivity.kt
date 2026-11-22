@@ -7,9 +7,11 @@ import android.Manifest
 import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -34,6 +36,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
+import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -82,6 +85,12 @@ class MainActivity : Activity(), SensorEventListener {
     private lateinit var torchB: Button
     private lateinit var autoB: Button
     private lateinit var overlay: Overlay
+    private lateinit var mission: TextView
+    private lateinit var findB: Button
+    private var noteUntil = 0L
+    private var lastState = ""
+    private var stateAt = 0L
+    @Volatile private var running = false
     private var colour = ""
     @Volatile private var auto = false
     @Volatile private var torch = false
@@ -92,7 +101,10 @@ class MainActivity : Activity(), SensorEventListener {
     private fun lp(w: Int, h: Int, weight: Float = 0f) = LinearLayout.LayoutParams(w, h, weight)
     private fun button(s: String) = Button(this).apply {
         text = s; isAllCaps = false; setTextColor(Color.parseColor("#E7E9EC")); background = bg("#1B1F26"); minHeight = dp(44); maxLines = 1; setPadding(dp(4), 0, dp(4), 0)
+        foreground = RippleDrawable(ColorStateList.valueOf(0x55FFFFFF), null, bg("#FFFFFF"))
     }
+
+    private fun note(s: String) { status.text = s; noteUntil = System.currentTimeMillis() + 3000 }
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -117,13 +129,13 @@ class MainActivity : Activity(), SensorEventListener {
         addView(surface.apply {
             holder.addCallback(object : SurfaceHolder.Callback {
                 override fun surfaceCreated(h: SurfaceHolder) {
-                    video = Video(h.surface, { "http://${rover.host}:8081/v" }) { ok -> ui.post { if (!ok) status.text = "camera reconnecting" } }.also { it.start() }
+                    video = Video(h.surface, { "http://${rover.host}:8081/v" }) { ok -> ui.post { if (!ok) note("camera reconnecting") } }.also { it.start() }
                 }
                 override fun surfaceChanged(h: SurfaceHolder, f: Int, w: Int, ht: Int) {}
                 override fun surfaceDestroyed(h: SurfaceHolder) { video?.close(); video = null }
             })
         }, FrameLayout.LayoutParams(-1, -1, Gravity.CENTER))
-        this@MainActivity.overlay = Overlay(context) { cls, col -> this@MainActivity.overlay.target = cls; colour = col; find() }
+        this@MainActivity.overlay = Overlay(context) { cls, col -> if (running) note("search running · press STOP first") else { this@MainActivity.overlay.target = cls; colour = col; find() } }
         addView(this@MainActivity.overlay, FrameLayout.LayoutParams(-1, -1))
         addView(LinearLayout(context).apply {
             gravity = Gravity.CENTER_VERTICAL
@@ -136,10 +148,13 @@ class MainActivity : Activity(), SensorEventListener {
             setOnLongClickListener { askHost(); true }
         }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { setMargins(dp(10), dp(10), 0, 0) })
         addView(LinearLayout(context).apply {
-            addView(button("FIND").apply { background = bg("#990D0F12", 10); setOnClickListener { find() }; setOnLongClickListener { pickTarget(); true } }, lp(-2, dp(44)))
+            findB = button("FIND").apply { background = bg("#990D0F12", 10); minWidth = dp(72); setOnClickListener { find() }; setOnLongClickListener { pickTarget(); true } }
+            addView(findB, lp(-2, dp(44)))
             for ((t, path) in listOf("⟳" to "/cam/rot", "⇄" to "/cam/switch"))
                 addView(button(t).apply { background = bg("#990D0F12", 10); setOnClickListener { camCfg(path) } }, lp(dp(44), dp(44)).apply { leftMargin = dp(6) })
         }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply { setMargins(0, dp(10), dp(10), 0) })
+        mission = label("", 15f).apply { visibility = View.GONE; gravity = Gravity.CENTER; setPadding(dp(16), dp(8), dp(16), dp(8)) }
+        addView(mission, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(14) })
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -175,7 +190,7 @@ class MainActivity : Activity(), SensorEventListener {
             addView(button("SNAP").apply { setOnClickListener { snap() } }, lp(0, -2, 1f).apply { leftMargin = dp(8) })
             torchB = button("TORCH").apply { setOnClickListener { toggleTorch() } }
             addView(torchB, lp(0, -2, 1f).apply { leftMargin = dp(8) })
-            autoB = button("AUTO").apply { setOnClickListener { auto = !auto; thread { rover.get("/a?on=" + (if (auto) 1 else 0)) } } }
+            autoB = button("AUTO").apply { setOnClickListener { auto = !auto; background = bg(if (auto) "#2EA043" else "#1B1F26"); note("auto " + if (auto) "on" else "off"); thread { rover.get("/a?on=" + (if (auto) 1 else 0)) } } }
             addView(autoB, lp(0, -2, 1f).apply { leftMargin = dp(8) })
         })
         addView(LinearLayout(context).apply {
@@ -203,9 +218,33 @@ class MainActivity : Activity(), SensorEventListener {
         }.setNegativeButton("Cancel", null).show()
     }
 
-    private fun find() = thread {
-        val r = rover.get("/search?cls=${overlay.target}&color=$colour")
-        ui.post { status.text = if (r == null) "rover offline" else "going to $colour ${overlay.target}".replace("_", " ") }
+    private fun find() {
+        if (running) { note("stopping…"); findB.text = "…"; thread { rover.get("/patrol?abort=1") }; return }
+        note("starting search for $colour ${overlay.target}".replace("_", " "))
+        findB.text = "…"
+        thread { if (rover.get("/search?cls=${overlay.target}&color=$colour") == null) ui.post { note("rover offline"); findB.text = "FIND" } }
+    }
+
+    private fun mission(j: JSONObject) {
+        val s = j.optString("state")
+        val now = System.currentTimeMillis()
+        if (s != lastState) { lastState = s; stateAt = now }
+        val g = j.optString("target").replace("_", " ").ifEmpty { "target" }
+        val (t, c) = when (s) {
+            "search" -> "Searching for $g…" to "#1F6FEB"
+            "approach" -> "Driving to $g…" to "#1F6FEB"
+            "found" -> "Found $g ✓" to "#2EA043"
+            "failed" -> "Failed: ${j.optString("err")}" to "#DA3633"
+            "abort" -> "Stopping…" to "#9A6700"
+            "selfcheck", "drive", "capture", "turn" -> "Patrol leg ${j.optInt("cp") + 2}/${j.optInt("legs")}: $s…" to "#1F6FEB"
+            "done" -> "Patrol done ✓" to "#2EA043"
+            else -> "" to "#000000"
+        }
+        running = s in setOf("selfcheck", "drive", "capture", "turn", "search", "approach", "abort")
+        findB.text = if (running) "STOP" else "FIND"
+        findB.background = bg(if (running) "#DA3633" else "#990D0F12", 10)
+        mission.visibility = if (t.isEmpty() || (!running && now - stateAt > 10000)) View.GONE else View.VISIBLE
+        if (t.isNotEmpty()) { mission.text = t; mission.background = bg(c, 18) }
     }
 
     private fun pickTarget() = thread {
@@ -219,14 +258,14 @@ class MainActivity : Activity(), SensorEventListener {
             AlertDialog.Builder(this).setTitle("Colour").setItems(colours) { _, j ->
                 overlay.target = classes[i]
                 colour = if (j == 0) "" else colours[j]
-                status.text = "target: $colour ${classes[i]}".replace("_", " ")
+                note("target: $colour ${classes[i]}".replace("_", " "))
             }.show()
         }.show()
     }
 
     private fun camCfg(path: String) = thread {
         val r = rover.get(path, 8081)
-        ui.post { status.text = if (r == null) "camera offline" else if (path.endsWith("rot")) "rotated" else "switched camera" }
+        ui.post { note(if (r == null) "camera offline" else if (path.endsWith("rot")) "rotated" else "switched camera") }
     }
 
     private fun toggleTorch() = thread {
@@ -234,7 +273,7 @@ class MainActivity : Activity(), SensorEventListener {
         if (r != null) torch = "true" in r
         ui.post {
             torchB.background = bg(if (torch) "#9A6700" else "#1B1F26")
-            status.text = if (r == null) "camera offline" else "torch " + if (torch) "on" else "off"
+            note(if (r == null) "camera offline" else "torch " + if (torch) "on" else "off")
         }
     }
 
@@ -246,11 +285,11 @@ class MainActivity : Activity(), SensorEventListener {
         } else rover.get("/rec/stop", 8081)?.also { recName = null }
         ui.post {
             recB.background = bg(if (recName != null) "#DA3633" else "#1B1F26")
-            status.text = when {
+            note(when {
                 r == null -> "camera offline"
                 recName != null -> "recording $recName"
                 else -> "saved " + Regex("\\d+").find(r)?.value + " frames"
-            }
+            })
         }
     }
 
@@ -259,7 +298,7 @@ class MainActivity : Activity(), SensorEventListener {
     private fun snap() {
         val b = Bitmap.createBitmap(surface.width, surface.height, Bitmap.Config.ARGB_8888)
         PixelCopy.request(surface, b, { r ->
-            if (r != PixelCopy.SUCCESS) { status.text = "no frame to save"; return@request }
+            if (r != PixelCopy.SUCCESS) { note("no frame to save"); return@request }
             val cv = ContentValues().apply {
                 put(MediaStore.Images.Media.DISPLAY_NAME, "undersight-${stamp()}.jpg")
                 put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Undersight")
@@ -268,7 +307,7 @@ class MainActivity : Activity(), SensorEventListener {
                 contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv)?.let { u ->
                     contentResolver.openOutputStream(u)?.use { b.compress(Bitmap.CompressFormat.JPEG, 92, it) }
                 }
-                ui.post { status.text = "saved to Pictures/Undersight" }
+                ui.post { note("saved to Pictures/Undersight") }
             }
         }, ui)
     }
@@ -306,7 +345,9 @@ class MainActivity : Activity(), SensorEventListener {
     }
 
     private fun senseLoop() {
+        var n = 0
         while (true) {
+            if (n++ % 2 == 0) rover.get("/patrol")?.let { runCatching { JSONObject(it) }.getOrNull() }?.let { ui.post { mission(it) } }
             val s = rover.sense()
             ui.post { show(s) }
             val l = loc
@@ -331,7 +372,7 @@ class MainActivity : Activity(), SensorEventListener {
         if (auto && brake) { auto = false; thread { rover.get("/a?on=0") } }
         autoB.background = bg(if (s.mode >= 0) "#2EA043" else "#1B1F26")
         compass.deg = if (s.hdg > -99999) ((s.hdg / 10f % 360 + 540) % 360 - 180) else null
-        status.text = when {
+        if (System.currentTimeMillis() > noteUntil) status.text = when {
             brake -> "BRAKE · proximity covered"
             s.mode >= 0 -> "auto: " + (listOf("drive", "turn", "check", "stuck").getOrNull(s.mode) ?: s.mode)
             tilting -> "tilt  steer %+.2f  throttle %+.2f".format(jx, jy)

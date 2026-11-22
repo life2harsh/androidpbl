@@ -71,10 +71,22 @@ def hub(path):
         return {}
 
 
+def fail(what, e):
+    e = str(e)
+    patrol_st.update(state="failed", err=e)
+    if e == "aborted":
+        t = what + " stopped"
+    elif e.endswith(" found"):
+        t = "Could not find" + e[2:-6]
+    else:
+        t = "%s failed, %s" % (what, e)
+    cam("/say/" + quote(t))
+
+
 def search(cls, col=""):
     global cmd
     sid = time.strftime("s%Y%m%d-%H%M%S")
-    patrol_st.update(state="search", id=sid, cp=-1, legs=0, err="")
+    patrol_st.update(state="search", id=sid, cp=-1, legs=0, err="", target=("%s %s" % (col, cls)).strip())
     threading.Thread(target=warm, args=(sid,), daemon=True).start()
     q = "/look?cls=%s&sid=%s&color=%s" % (quote(cls), sid, quote(col))
     try:
@@ -109,7 +121,7 @@ def search(cls, col=""):
         cam("/say/" + quote("Found %s %s" % (d.get("seen_colour", ""), cls)))
         patrol_st["state"] = "found"
     except RuntimeError as e:
-        patrol_st.update(state="failed", err=str(e))
+        fail("Search", e)
     finally:
         cmd = None
 
@@ -151,7 +163,7 @@ def patrol(legs, stop_mm):
             spin(85)
         patrol_st["state"] = "done"
     except RuntimeError as e:
-        patrol_st.update(state="failed", err=str(e))
+        fail("Patrol", e)
     finally:
         cmd = None
         cam("/torch/0")

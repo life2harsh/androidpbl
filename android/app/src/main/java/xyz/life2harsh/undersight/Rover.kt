@@ -10,7 +10,7 @@ class Rover(@Volatile var host: String) {
         (URL("http://$host:$port$path").openConnection() as HttpURLConnection).run {
             connectTimeout = 800
             readTimeout = 800
-            try { inputStream.use { it.readBytes().decodeToString() } } finally { disconnect() }
+            inputStream.use { it.readBytes().decodeToString() }
         }
     } catch (e: Exception) {
         null
